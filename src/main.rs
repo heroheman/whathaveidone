@@ -189,7 +189,7 @@ fn get_active_commits<'a>(
 
 fn render_commits(
     f: &mut Frame,
-    repos: &Vec<PathBuf>,
+    _repos: &Vec<PathBuf>, // Prefix unused parameter
     selected_repo_index: usize,
     data: &Vec<(PathBuf, Vec<String>)>,
     interval_label: &str,
@@ -206,7 +206,7 @@ fn render_commits(
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
     let mut repo_list: Vec<ListItem> = vec![ListItem::new(format!(
         "{} Alle",
-        if selected_repo_index == usize::MAX { "→" } else { " " }
+        if selected_repo_index == usize::MAX { "→" } else { " " } // Add arrow for "Alle"
     ))
     .style(if selected_repo_index == usize::MAX {
         Style::default().add_modifier(Modifier::BOLD)
@@ -226,7 +226,7 @@ fn render_commits(
                 };
                 ListItem::new(format!(
                     "{} {}",
-                    if selected_repo_index == i { "→" } else { " " },
+                    if selected_repo_index == i { "→" } else { " " }, // Add arrow for selected repo
                     repo_name
                 ))
                 .style(style)
@@ -241,33 +241,50 @@ fn render_commits(
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
-            if show_details {
-                vec![Constraint::Min(3), Constraint::Length(7), Constraint::Length(1)]
+            if show_details && selected_commit_index.is_some() { // Only show details pane if a commit is selected
+                // Increase the height of the details pane from 7 to 15
+                vec![Constraint::Min(0), Constraint::Length(15), Constraint::Length(1)] 
             } else {
-                vec![Constraint::Min(3), Constraint::Length(1)]
+                vec![Constraint::Min(0), Constraint::Length(1)] // Adjust Min constraint if needed
             },
         )
         .split(main_area);
 
-    let header = Paragraph::new(format!(
-        "Standup Commits – Zeitfenster: {}",
-        interval_label
-    ))
-    .style(Style::default().add_modifier(Modifier::BOLD));
-    f.render_widget(header, vertical_chunks[0]);
+    let header_text = if selected_repo_index == usize::MAX {
+        format!("Standup Commits – Zeitfenster: {}", interval_label)
+    } else if let Some((repo, _)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
+        format!("{} – Zeitfenster: {}", repo.file_name().unwrap_or_default().to_string_lossy(), interval_label)
+    } else {
+        format!("Standup Commits – Zeitfenster: {}", interval_label) // Fallback
+    };
 
     if selected_repo_index == usize::MAX {
         // Show all commits with project names as headings
-        let mut all_commits = vec![];
-        for (repo, commits) in data {
+        let mut items: Vec<ListItem> = vec![];
+        let mut current_commit_offset = 0;
+        for (_repo_idx, (repo, commits)) in data.iter().enumerate() { // Prefix unused repo_idx
             let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
-            all_commits.push(format!("### {}\n", repo_name));
-            all_commits.extend(commits.iter().cloned());
+            items.push(ListItem::new(format!("### {}", repo_name)).style(Style::default().add_modifier(Modifier::BOLD))); // Make repo name bold
+            items.extend(commits.iter().enumerate().map(|(commit_idx_in_repo, commit)| {
+                let global_commit_idx = current_commit_offset + commit_idx_in_repo;
+                let style = if Some(global_commit_idx) == selected_commit_index {
+                    Style::default().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                 ListItem::new(format!(
+                    "{} {}",
+                    if Some(global_commit_idx) == selected_commit_index { "→" } else { " " }, // Add arrow for selected commit
+                    commit
+                )).style(style)
+            }));
+            current_commit_offset += commits.len();
         }
-        let text = all_commits.join("\n");
-        let block = Block::default().borders(Borders::ALL);
-        let paragraph = Paragraph::new(text).block(block);
-        f.render_widget(paragraph, vertical_chunks[0]);
+
+        let list = List::new(items)
+            .block(Block::default().title(header_text).borders(Borders::ALL)); // Use header text as block title (this is now valid)
+        f.render_widget(list, vertical_chunks[0]);
+
     } else {
         // Show commits for the selected repository
         if let Some((repo, commits)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
@@ -282,23 +299,34 @@ fn render_commits(
                     };
                     ListItem::new(format!(
                         "{} {}",
-                        if Some(i) == selected_commit_index { "→" } else { " " },
+                        if Some(i) == selected_commit_index { "→" } else { " " }, // Add arrow for selected commit
                         commit
                     ))
                     .style(style)
                 })
                 .collect();
             let commit_widget = List::new(commit_list)
-                .block(Block::default().title(repo.display().to_string()).borders(Borders::ALL));
+                .block(Block::default().title(header_text).borders(Borders::ALL)); // Use header text as block title (this is now valid)
             f.render_widget(commit_widget, vertical_chunks[0]);
 
-            // Show detailed view if enabled
+            // Show detailed view if enabled and a commit is selected
             if show_details {
                 if let Some(index) = selected_commit_index {
                     if let Some(commit) = commits.get(index) {
-                        let details = format!("Details for commit:\n{}", commit);
+                        // Extract commit hash (first word)
+                        let commit_hash = commit.split_whitespace().next().unwrap_or("");
+                        let details = if !commit_hash.is_empty() {
+                            match get_commit_details(repo, commit_hash) {
+                                Ok(d) => d,
+                                Err(e) => format!("Error fetching details: {}", e),
+                            }
+                        } else {
+                            "Could not extract commit hash.".to_string()
+                        };
+
                         let details_widget = Paragraph::new(details)
-                            .block(Block::default().title("Details").borders(Borders::ALL));
+                            .block(Block::default().title("Details").borders(Borders::ALL))
+                            .wrap(Wrap { trim: true }); // Add wrapping
                         f.render_widget(details_widget, vertical_chunks[1]);
                     }
                 }
@@ -312,4 +340,24 @@ fn render_commits(
     )
     .style(Style::default().add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks.last().unwrap().clone());
+}
+
+// Add this new function to fetch commit details
+fn get_commit_details(repo: &PathBuf, commit_hash: &str) -> anyhow::Result<String> {
+    let output = Command::new("git")
+        .arg("-C")
+        .arg(repo)
+        .arg("show")
+        .arg("--pretty=fuller") // Use a format that includes more details
+        .arg(commit_hash)
+        .output()?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(anyhow::anyhow!(
+            "git show failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
 }
