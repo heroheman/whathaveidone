@@ -2,7 +2,7 @@
 use std::{env, fs, path::PathBuf, process::Command, time::{Duration, SystemTime}};
 use chrono::{DateTime, Local};
 use ratatui::{prelude::*, widgets::*};
-use crossterm::{event::{self, Event, KeyCode}, terminal};
+use crossterm::{event::{self, Event, KeyCode}, execute, terminal::{self, Clear, ClearType}};
 
 fn main() -> anyhow::Result<()> {
     let initial_interval = parse_args();
@@ -18,12 +18,15 @@ fn main() -> anyhow::Result<()> {
     let mut current_index = intervals.iter().position(|(_, d)| *d == initial_interval).unwrap_or(0);
     let mut current_interval = intervals[current_index].1;
     let mut commits = reload_commits(&repos, current_interval)?;
-    let mut selected_repo_index = 0; // Track the selected repository
+    let mut selected_repo_index = usize::MAX; // Default to showing all repositories
 
     terminal::enable_raw_mode()?;
     let stdout = std::io::stdout();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
+
+    // Clear the terminal screen to avoid artifacts
+    execute!(std::io::stdout(), Clear(ClearType::All))?;
 
     loop {
         terminal.draw(|f| {
@@ -49,7 +52,15 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                     KeyCode::Tab => {
-                        selected_repo_index = (selected_repo_index + 1) % repos.len();
+                        let filtered_repos: Vec<&PathBuf> = commits.iter().map(|(repo, _)| repo).collect();
+                        if selected_repo_index == usize::MAX {
+                            selected_repo_index = 0;
+                        } else {
+                            selected_repo_index = (selected_repo_index + 1) % filtered_repos.len();
+                            if selected_repo_index == 0 {
+                                selected_repo_index = usize::MAX; // Return to showing all
+                            }
+                        }
                     }
                     KeyCode::Char('q') => break,
                     _ => {}
@@ -141,8 +152,11 @@ fn render_commits(
         .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
         .split(area);
 
+    // Filter repositories to only include those with commits
+    let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
+
     // Sidebar for repositories
-    let repo_list: Vec<ListItem> = repos
+    let repo_list: Vec<ListItem> = filtered_repos
         .iter()
         .enumerate()
         .map(|(i, repo)| {
@@ -176,14 +190,25 @@ fn render_commits(
     .style(Style::default().add_modifier(Modifier::BOLD));
     f.render_widget(header, chunks[0]);
 
-    for (i, (repo, commits)) in data.iter().enumerate() {
-        if repos[selected_repo_index] == *repo {
+    if selected_repo_index == usize::MAX {
+        // Show all commits
+        for (i, (repo, commits)) in data.iter().enumerate() {
             let text = commits.join("\n");
             let block = Block::default()
                 .title(repo.display().to_string())
                 .borders(Borders::ALL);
             let paragraph = Paragraph::new(text).block(block);
             f.render_widget(paragraph, chunks[i + 1]);
+        }
+    } else {
+        // Show commits for the selected repository
+        if let Some((repo, commits)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
+            let text = commits.join("\n");
+            let block = Block::default()
+                .title(repo.display().to_string())
+                .borders(Borders::ALL);
+            let paragraph = Paragraph::new(text).block(block);
+            f.render_widget(paragraph, main_area);
         }
     }
 }
