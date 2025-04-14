@@ -202,22 +202,36 @@ fn render_commits(
         .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
         .split(area);
 
-    // Filter repositories to only include those with commits
-    let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
-
     // Sidebar for repositories
-    let repo_list: Vec<ListItem> = filtered_repos
-        .iter()
-        .enumerate()
-        .map(|(i, repo)| {
-            let style = if i == selected_repo_index {
-                Style::default().add_modifier(Modifier::BOLD)
-            } else {
-                Style::default()
-            };
-            ListItem::new(repo.display().to_string()).style(style)
-        })
-        .collect();
+    let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
+    let mut repo_list: Vec<ListItem> = vec![ListItem::new(format!(
+        "{} Alle",
+        if selected_repo_index == usize::MAX { "→" } else { " " }
+    ))
+    .style(if selected_repo_index == usize::MAX {
+        Style::default().add_modifier(Modifier::BOLD)
+    } else {
+        Style::default()
+    })];
+    repo_list.extend(
+        filtered_repos
+            .iter()
+            .enumerate()
+            .map(|(i, repo)| {
+                let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
+                let style = if selected_repo_index == i {
+                    Style::default().add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default()
+                };
+                ListItem::new(format!(
+                    "{} {}",
+                    if selected_repo_index == i { "→" } else { " " },
+                    repo_name
+                ))
+                .style(style)
+            }),
+    );
     let sidebar = List::new(repo_list)
         .block(Block::default().title("Repositories").borders(Borders::ALL));
     f.render_widget(sidebar, chunks[0]);
@@ -228,30 +242,32 @@ fn render_commits(
         .direction(Direction::Vertical)
         .constraints(
             if show_details {
-                vec![Constraint::Min(3), Constraint::Length(7)].into_iter()
+                vec![Constraint::Min(3), Constraint::Length(7), Constraint::Length(1)]
             } else {
-                vec![Constraint::Min(3)].into_iter()
+                vec![Constraint::Min(3), Constraint::Length(1)]
             },
         )
         .split(main_area);
 
     let header = Paragraph::new(format!(
-        "Standup Commits – Zeitfenster: {} (←/→ oder 1/2/3/w/m, ↑/↓=navigate, Space=details, q=quit)",
+        "Standup Commits – Zeitfenster: {}",
         interval_label
     ))
     .style(Style::default().add_modifier(Modifier::BOLD));
     f.render_widget(header, vertical_chunks[0]);
 
     if selected_repo_index == usize::MAX {
-        // Show all commits
-        for (i, (repo, commits)) in data.iter().enumerate() {
-            let text = commits.join("\n");
-            let block = Block::default()
-                .title(repo.display().to_string())
-                .borders(Borders::ALL);
-            let paragraph = Paragraph::new(text).block(block);
-            f.render_widget(paragraph, vertical_chunks[0]);
+        // Show all commits with project names as headings
+        let mut all_commits = vec![];
+        for (repo, commits) in data {
+            let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
+            all_commits.push(format!("### {}\n", repo_name));
+            all_commits.extend(commits.iter().cloned());
         }
+        let text = all_commits.join("\n");
+        let block = Block::default().borders(Borders::ALL);
+        let paragraph = Paragraph::new(text).block(block);
+        f.render_widget(paragraph, vertical_chunks[0]);
     } else {
         // Show commits for the selected repository
         if let Some((repo, commits)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
@@ -264,7 +280,12 @@ fn render_commits(
                     } else {
                         Style::default()
                     };
-                    ListItem::new(commit.clone()).style(style)
+                    ListItem::new(format!(
+                        "{} {}",
+                        if Some(i) == selected_commit_index { "→" } else { " " },
+                        commit
+                    ))
+                    .style(style)
                 })
                 .collect();
             let commit_widget = List::new(commit_list)
@@ -284,4 +305,11 @@ fn render_commits(
             }
         }
     }
+
+    // Footer for keybindings
+    let footer = Paragraph::new(
+        "Tasten: ←/→ Zeitfenster | ↑/↓ Commits | Tab Projekte | Space Details | q Beenden",
+    )
+    .style(Style::default().add_modifier(Modifier::DIM));
+    f.render_widget(footer, vertical_chunks.last().unwrap().clone());
 }
