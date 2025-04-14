@@ -19,6 +19,8 @@ fn main() -> anyhow::Result<()> {
     let mut current_interval = intervals[current_index].1;
     let mut commits = reload_commits(&repos, current_interval)?;
     let mut selected_repo_index = usize::MAX; // Default to showing all repositories
+    let mut selected_commit_index: Option<usize> = None; // Track the selected commit index
+    let mut show_details = false; // Whether to show the detailed view
 
     terminal::enable_raw_mode()?;
     let stdout = std::io::stdout();
@@ -30,7 +32,15 @@ fn main() -> anyhow::Result<()> {
 
     loop {
         terminal.draw(|f| {
-            render_commits(f, &repos, selected_repo_index, &commits, intervals[current_index].0);
+            render_commits(
+                f,
+                &repos,
+                selected_repo_index,
+                &commits,
+                intervals[current_index].0,
+                selected_commit_index,
+                show_details,
+            );
         })?;
 
         if event::poll(std::time::Duration::from_millis(200))? {
@@ -61,6 +71,30 @@ fn main() -> anyhow::Result<()> {
                                 selected_repo_index = usize::MAX; // Return to showing all
                             }
                         }
+                        selected_commit_index = None; // Reset commit selection
+                    }
+                    KeyCode::Up => {
+                        if let Some(index) = selected_commit_index {
+                            if index > 0 {
+                                selected_commit_index = Some(index - 1);
+                            }
+                        } else {
+                            selected_commit_index = Some(0);
+                        }
+                    }
+                    KeyCode::Down => {
+                        if let Some(index) = selected_commit_index {
+                            if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
+                                if index < repo_commits.len() - 1 {
+                                    selected_commit_index = Some(index + 1);
+                                }
+                            }
+                        } else {
+                            selected_commit_index = Some(0);
+                        }
+                    }
+                    KeyCode::Char(' ') => {
+                        show_details = !show_details; // Toggle detailed view
                     }
                     KeyCode::Char('q') => break,
                     _ => {}
@@ -139,12 +173,28 @@ fn reload_commits(repos: &Vec<PathBuf>, duration: Duration) -> anyhow::Result<Ve
     Ok(commits)
 }
 
+fn get_active_commits<'a>(
+    commits: &'a Vec<(PathBuf, Vec<String>)>,
+    selected_repo_index: usize,
+) -> Option<&'a Vec<String>> {
+    if selected_repo_index == usize::MAX {
+        None
+    } else {
+        commits
+            .iter()
+            .find(|(repo, _)| repo == &commits[selected_repo_index].0)
+            .map(|(_, repo_commits)| repo_commits)
+    }
+}
+
 fn render_commits(
     f: &mut Frame,
     repos: &Vec<PathBuf>,
     selected_repo_index: usize,
     data: &Vec<(PathBuf, Vec<String>)>,
     interval_label: &str,
+    selected_commit_index: Option<usize>,
+    show_details: bool,
 ) {
     let area = f.area();
     let chunks = Layout::default()
@@ -174,21 +224,23 @@ fn render_commits(
 
     // Main area for commits
     let main_area = chunks[1];
-    let chunks = Layout::default()
+    let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
-            std::iter::once(Constraint::Length(1))
-                .chain(data.iter().map(|_| Constraint::Min(3)))
-                .collect::<Vec<_>>(),
+            if show_details {
+                vec![Constraint::Min(3), Constraint::Length(7)].into_iter()
+            } else {
+                vec![Constraint::Min(3)].into_iter()
+            },
         )
         .split(main_area);
 
     let header = Paragraph::new(format!(
-        "Standup Commits – Zeitfenster: {} (←/→ oder 1/2/3/w/m, Tab=wechseln, q=quit)",
+        "Standup Commits – Zeitfenster: {} (←/→ oder 1/2/3/w/m, ↑/↓=navigate, Space=details, q=quit)",
         interval_label
     ))
     .style(Style::default().add_modifier(Modifier::BOLD));
-    f.render_widget(header, chunks[0]);
+    f.render_widget(header, vertical_chunks[0]);
 
     if selected_repo_index == usize::MAX {
         // Show all commits
@@ -198,17 +250,38 @@ fn render_commits(
                 .title(repo.display().to_string())
                 .borders(Borders::ALL);
             let paragraph = Paragraph::new(text).block(block);
-            f.render_widget(paragraph, chunks[i + 1]);
+            f.render_widget(paragraph, vertical_chunks[0]);
         }
     } else {
         // Show commits for the selected repository
         if let Some((repo, commits)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
-            let text = commits.join("\n");
-            let block = Block::default()
-                .title(repo.display().to_string())
-                .borders(Borders::ALL);
-            let paragraph = Paragraph::new(text).block(block);
-            f.render_widget(paragraph, main_area);
+            let commit_list: Vec<ListItem> = commits
+                .iter()
+                .enumerate()
+                .map(|(i, commit)| {
+                    let style = if Some(i) == selected_commit_index {
+                        Style::default().add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+                    ListItem::new(commit.clone()).style(style)
+                })
+                .collect();
+            let commit_widget = List::new(commit_list)
+                .block(Block::default().title(repo.display().to_string()).borders(Borders::ALL));
+            f.render_widget(commit_widget, vertical_chunks[0]);
+
+            // Show detailed view if enabled
+            if show_details {
+                if let Some(index) = selected_commit_index {
+                    if let Some(commit) = commits.get(index) {
+                        let details = format!("Details for commit:\n{}", commit);
+                        let details_widget = Paragraph::new(details)
+                            .block(Block::default().title("Details").borders(Borders::ALL));
+                        f.render_widget(details_widget, vertical_chunks[1]);
+                    }
+                }
+            }
         }
     }
 }
