@@ -18,6 +18,7 @@ fn main() -> anyhow::Result<()> {
     let mut current_index = intervals.iter().position(|(_, d)| *d == initial_interval).unwrap_or(0);
     let mut current_interval = intervals[current_index].1;
     let mut commits = reload_commits(&repos, current_interval)?;
+    let mut selected_repo_index = 0; // Track the selected repository
 
     terminal::enable_raw_mode()?;
     let stdout = std::io::stdout();
@@ -26,7 +27,7 @@ fn main() -> anyhow::Result<()> {
 
     loop {
         terminal.draw(|f| {
-            render_commits(f, &commits, intervals[current_index].0);
+            render_commits(f, &repos, selected_repo_index, &commits, intervals[current_index].0);
         })?;
 
         if event::poll(std::time::Duration::from_millis(200))? {
@@ -46,6 +47,9 @@ fn main() -> anyhow::Result<()> {
                         if current_index < intervals.len() - 1 {
                             current_index += 1;
                         }
+                    }
+                    KeyCode::Tab => {
+                        selected_repo_index = (selected_repo_index + 1) % repos.len();
                     }
                     KeyCode::Char('q') => break,
                     _ => {}
@@ -124,25 +128,62 @@ fn reload_commits(repos: &Vec<PathBuf>, duration: Duration) -> anyhow::Result<Ve
     Ok(commits)
 }
 
-fn render_commits(f: &mut Frame, data: &Vec<(PathBuf, Vec<String>)>, interval_label: &str) {
+fn render_commits(
+    f: &mut Frame,
+    repos: &Vec<PathBuf>,
+    selected_repo_index: usize,
+    data: &Vec<(PathBuf, Vec<String>)>,
+    interval_label: &str,
+) {
     let area = f.area();
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
+        .split(area);
+
+    // Sidebar for repositories
+    let repo_list: Vec<ListItem> = repos
+        .iter()
+        .enumerate()
+        .map(|(i, repo)| {
+            let style = if i == selected_repo_index {
+                Style::default().add_modifier(Modifier::BOLD)
+            } else {
+                Style::default()
+            };
+            ListItem::new(repo.display().to_string()).style(style)
+        })
+        .collect();
+    let sidebar = List::new(repo_list)
+        .block(Block::default().title("Repositories").borders(Borders::ALL));
+    f.render_widget(sidebar, chunks[0]);
+
+    // Main area for commits
+    let main_area = chunks[1];
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             std::iter::once(Constraint::Length(1))
                 .chain(data.iter().map(|_| Constraint::Min(3)))
-                .collect::<Vec<_>>()
+                .collect::<Vec<_>>(),
         )
-        .split(area);
+        .split(main_area);
 
-    let header = Paragraph::new(format!("Standup Commits – Zeitfenster: {} (←/→ oder 1/2/3/w/m, q=quit)", interval_label))
-        .style(Style::default().add_modifier(Modifier::BOLD));
+    let header = Paragraph::new(format!(
+        "Standup Commits – Zeitfenster: {} (←/→ oder 1/2/3/w/m, Tab=wechseln, q=quit)",
+        interval_label
+    ))
+    .style(Style::default().add_modifier(Modifier::BOLD));
     f.render_widget(header, chunks[0]);
 
     for (i, (repo, commits)) in data.iter().enumerate() {
-        let text = commits.join("\n");
-        let block = Block::default().title(repo.display().to_string()).borders(Borders::ALL);
-        let paragraph = Paragraph::new(text).block(block);
-        f.render_widget(paragraph, chunks[i + 1]);
+        if repos[selected_repo_index] == *repo {
+            let text = commits.join("\n");
+            let block = Block::default()
+                .title(repo.display().to_string())
+                .borders(Borders::ALL);
+            let paragraph = Paragraph::new(text).block(block);
+            f.render_widget(paragraph, chunks[i + 1]);
+        }
     }
 }
