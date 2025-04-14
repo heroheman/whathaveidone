@@ -1,0 +1,14 @@
+[package]
+name = "standup"
+version = "0.1.0"
+edition = "2024"
+authors = ["Dein Name <dein@email.com>"]
+description = "CLI Tool für tägliche Standups mit Git und Ratatui"
+license = "MIT"
+repository = "https://github.com/deinname/standup"
+
+[dependencies]
+ratatui = { version = "0.28.0", features = ["all-widgets"] }
+crossterm = "0.27"
+chrono = "0.4"
+anyhow = "1.0"
