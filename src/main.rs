@@ -82,7 +82,22 @@ fn main() -> anyhow::Result<()> {
                     KeyCode::Tab => {
                         // Fokus zyklisch wechseln
                         focus = match focus {
-                            FocusArea::Sidebar => FocusArea::CommitList,
+                            FocusArea::Sidebar => {
+                                // Wenn in CommitList noch nichts selektiert ist, selektiere ersten Commit
+                                if selected_commit_index.is_none() {
+                                    if selected_repo_index == usize::MAX {
+                                        let total_commits: usize = commits.iter().map(|(_, c)| c.len()).sum();
+                                        if total_commits > 0 {
+                                            selected_commit_index = Some(0);
+                                        }
+                                    } else if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
+                                        if !repo_commits.is_empty() {
+                                            selected_commit_index = Some(0);
+                                        }
+                                    }
+                                }
+                                FocusArea::CommitList
+                            }
                             FocusArea::CommitList => {
                                 if show_details { FocusArea::Detail } else { FocusArea::Sidebar }
                             }
