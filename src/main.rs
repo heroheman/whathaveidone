@@ -247,7 +247,17 @@ fn main() -> anyhow::Result<()> {
                             }
                             FocusArea::Detail => {
                                 // Scroll im Detailview nach unten
-                                detail_scroll = detail_scroll.saturating_add(1);
+                                if let Some(commit_index) = selected_commit_index {
+                                    let max_scroll = calculate_max_detail_scroll(
+                                        &commits, 
+                                        selected_repo_index, 
+                                        commit_index
+                                    )?;
+                                    
+                                    if detail_scroll < max_scroll {
+                                        detail_scroll = detail_scroll.saturating_add(1);
+                                    }
+                                }
                             }
                         }
                     }
@@ -753,4 +763,56 @@ fn get_commit_details(repo: &PathBuf, commit_hash: &str) -> anyhow::Result<Strin
             String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+fn calculate_max_detail_scroll(
+    commits: &Vec<(PathBuf, Vec<String>)>, 
+    selected_repo_index: usize,
+    commit_index: usize
+) -> anyhow::Result<u16> {
+    let _details_text = if selected_repo_index == usize::MAX {
+        // Find commit in "All" repositories view by global index
+        let mut idx = 0;
+        for (repo, repo_commits) in commits {
+            if commit_index < idx + repo_commits.len() {
+                let commit = &repo_commits[commit_index - idx];
+                let commit_hash = commit.split_whitespace().next().unwrap_or("");
+                if !commit_hash.is_empty() {
+                    match get_commit_details(repo, commit_hash) {
+                        Ok(details) => return calculate_max_scroll(details, 15),
+                        Err(_) => return Ok(0),
+                    }
+                }
+                return Ok(0);
+            }
+            idx += repo_commits.len();
+        }
+        return Ok(0);
+    } else if let Some((repo, repo_commits)) = commits.get(selected_repo_index) {
+        if let Some(commit) = repo_commits.get(commit_index) {
+            let commit_hash = commit.split_whitespace().next().unwrap_or("");
+            if !commit_hash.is_empty() {
+                match get_commit_details(repo, commit_hash) {
+                    Ok(details) => return calculate_max_scroll(details, 15),
+                    Err(_) => return Ok(0),
+                }
+            }
+        }
+    };  // Add semicolon here
+    
+    Ok(0)
+}
+
+fn calculate_max_scroll(content: String, view_height: u16) -> anyhow::Result<u16> {
+    let content_lines = content.lines().count() as u16;
+    // Subtract 2 for the border lines of the block
+    let visible_lines = view_height.saturating_sub(2);
+    
+    // If content fits in the view, no scroll needed
+    if content_lines <= visible_lines {
+        return Ok(0);
+    }
+    
+    // Otherwise, max scroll is content lines minus visible lines
+    Ok(content_lines.saturating_sub(visible_lines))
 }
