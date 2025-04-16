@@ -1,7 +1,7 @@
 // src/main.rs
 use std::{env, fs, path::PathBuf, process::Command, time::{Duration, SystemTime}};
 use chrono::{DateTime, Local};
-use ratatui::{prelude::*, widgets::*};
+use ratatui::{prelude::*, widgets::*, widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, ListState}};
 use crossterm::{event::{self, Event, KeyCode}, execute, terminal::{self, Clear, ClearType}};
 
 // Fokusbereiche
@@ -364,17 +364,28 @@ fn get_commitlist_visible_and_total(commits: &Vec<(PathBuf, Vec<String>)>, selec
     }
 }
 
+// Calculate visible height for the commit list based on available space
+fn calculate_visible_height(f: &Frame, has_details: bool) -> u16 {
+    let total_height = f.area().height; // Changed from f.size() to f.area()
+    // Subtract borders (2), footer (1), and detail view if visible (15)
+    if has_details {
+        total_height.saturating_sub(2 + 1 + 15)
+    } else {
+        total_height.saturating_sub(2 + 1)
+    }
+}
+
 fn render_commits(
     f: &mut Frame,
-    _repos: &Vec<PathBuf>, // Prefix unused parameter
+    _repos: &Vec<PathBuf>,
     selected_repo_index: usize,
     data: &Vec<(PathBuf, Vec<String>)>,
     interval_label: &str,
     selected_commit_index: Option<usize>,
     show_details: bool,
-    focus: FocusArea, // <-- Fokus-Parameter
-    _sidebar_scroll: usize,      // unused, prefix with _
-    _commitlist_scroll: usize,   // unused, prefix with _
+    focus: FocusArea,
+    _sidebar_scroll: usize,      // Prefixed with underscore since it's unused
+    mut commitlist_scroll: usize, // Made mutable to allow modification
     detail_scroll: u16,
 ) {
     let area = f.area();
@@ -383,7 +394,7 @@ fn render_commits(
         .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
         .split(area);
 
-    // Sidebar für Repos
+    // Sidebar für Repos (no scrollbar)
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
     let mut repo_list: Vec<ListItem> = vec![ListItem::new(format!(
         "{} Alle",
@@ -423,11 +434,21 @@ fn render_commits(
                 Style::default().fg(Color::Cyan)
             }
         );
-    let sidebar = List::new(repo_list)
-        .block(sidebar_block);
-    f.render_widget(sidebar, chunks[0]);
+    
+    // Create a stateful list for the sidebar - no scrollbar needed
+    let sidebar = List::new(repo_list).block(sidebar_block);
+    let mut sidebar_state = ListState::default();
+    
+    // Visually select the active repository but ensure proper scrolling
+    if selected_repo_index != usize::MAX {
+        sidebar_state.select(Some(selected_repo_index));
+    } else {
+        sidebar_state.select(Some(0)); // "Alle" is selected
+    }
+    
+    f.render_stateful_widget(sidebar, chunks[0], &mut sidebar_state);
 
-    // Main area für Commits
+    // Main area für Commits with scrollbar
     let main_area = chunks[1];
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -440,6 +461,12 @@ fn render_commits(
         )
         .split(main_area);
 
+    // Commit list layout with scrollbar
+    let commit_layout = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
+        .split(vertical_chunks[0]);
+
     let header_text = if selected_repo_index == usize::MAX {
         format!("Standup Commits – Zeitfenster: {}", interval_label)
     } else if let Some((repo, _)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
@@ -448,6 +475,9 @@ fn render_commits(
         format!("Standup Commits – Zeitfenster: {}", interval_label)
     };
 
+    // Calculate the visible height of the commit list area for proper scrolling
+    let visible_height = calculate_visible_height(f, show_details && selected_commit_index.is_some());
+    
     if selected_repo_index == usize::MAX {
         // Alle Commits mit Projektnamen als Überschrift
         let mut items: Vec<ListItem> = vec![];
@@ -481,9 +511,45 @@ fn render_commits(
                     Style::default().fg(Color::Cyan)
                 }
             );
-        let list = List::new(items)
-            .block(commitlist_block);
-        f.render_widget(list, vertical_chunks[0]);
+        
+        // Create stateful list for commits
+        let list = List::new(items).block(commitlist_block);
+        let mut list_state = ListState::default();
+        
+        // Check if we need to limit scrolling to prevent going out of view
+        if let Some(index) = selected_commit_index {
+            // Ensure scroll position keeps the selected item in view
+            let total_items = data.iter().map(|(_, c)| c.len()).sum::<usize>();
+            let max_scroll = total_items.saturating_sub(visible_height as usize);
+            
+            // Adjust commitlist_scroll to keep index visible
+            if index < commitlist_scroll {
+                // Selected item is above current scroll - move up
+                commitlist_scroll = index;
+            } else if index >= commitlist_scroll + visible_height as usize {
+                // Selected item is below visible area - move down but don't exceed max
+                commitlist_scroll = std::cmp::min(
+                    index + 1 - visible_height as usize,
+                    max_scroll
+                );
+            }
+            
+            list_state.select(Some(index));
+        }
+        
+        f.render_stateful_widget(list, commit_layout[0], &mut list_state);
+        
+        // Update scrollbar to match the actual scroll position
+        let total_commits: usize = data.iter().map(|(_, c)| c.len()).sum();
+        let max_scroll = total_commits.saturating_sub(visible_height as usize);
+        let adjusted_position = std::cmp::min(commitlist_scroll, max_scroll);
+        
+        let commit_scrollbar = Scrollbar::default()
+            .orientation(ScrollbarOrientation::VerticalRight);
+        let mut commit_scrollbar_state = ScrollbarState::default()
+            .position(adjusted_position)
+            .content_length(total_commits);
+        f.render_stateful_widget(commit_scrollbar, commit_layout[1], &mut commit_scrollbar_state);
 
         // Navigierbarkeit für "Alle"-View: Detailview für selektierten Commit anzeigen
         if show_details {
@@ -503,6 +569,12 @@ fn render_commits(
                             "Could not extract commit hash.".to_string()
                         };
 
+                        // Detail view layout with scrollbar
+                        let detail_layout = Layout::default()
+                            .direction(Direction::Horizontal)
+                            .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
+                            .split(vertical_chunks[1]);
+
                         let detail_block = Block::default()
                             .title("Details")
                             .borders(Borders::ALL)
@@ -513,12 +585,22 @@ fn render_commits(
                                     Style::default().fg(Color::Magenta)
                                 }
                             );
-                        let details_widget = Paragraph::new(details)
+                        let details_widget = Paragraph::new(details.clone())
                             .block(detail_block)
                             .wrap(Wrap { trim: true })
                             .scroll((detail_scroll, 0))
                             .style(Style::default().fg(Color::White));
-                        f.render_widget(details_widget, vertical_chunks[1]);
+                        f.render_widget(details_widget, detail_layout[0]);
+                        
+                        // Detail scrollbar
+                        let detail_lines = details.lines().count();
+                        let detail_scrollbar = Scrollbar::default()
+                            .orientation(ScrollbarOrientation::VerticalRight);
+                        let mut detail_scrollbar_state = ScrollbarState::default()
+                            .position(detail_scroll as usize) // Convert detail_scroll from u16 to usize
+                            .content_length(detail_lines);
+                        f.render_stateful_widget(detail_scrollbar, detail_layout[1], &mut detail_scrollbar_state);
+                        
                         break;
                     }
                     idx += commits.len();
@@ -555,9 +637,41 @@ fn render_commits(
                         Style::default().fg(Color::Cyan)
                     }
                 );
-            let commit_widget = List::new(commit_list)
-                .block(commitlist_block);
-            f.render_widget(commit_widget, vertical_chunks[0]);
+            
+            // Create stateful list for commits
+            let commit_widget = List::new(commit_list).block(commitlist_block);
+            let mut commit_state = ListState::default();
+            
+            // Similar logic to prevent scrolling out of view
+            if let Some(index) = selected_commit_index {
+                let commit_count = commits.len();
+                let max_scroll = commit_count.saturating_sub(visible_height as usize);
+                
+                // Adjust commitlist_scroll to keep index visible
+                if index < commitlist_scroll {
+                    commitlist_scroll = index;
+                } else if index >= commitlist_scroll + visible_height as usize {
+                    commitlist_scroll = std::cmp::min(
+                        index + 1 - visible_height as usize,
+                        max_scroll
+                    );
+                }
+                
+                commit_state.select(Some(index));
+            }
+            
+            f.render_stateful_widget(commit_widget, commit_layout[0], &mut commit_state);
+            
+            // Update scrollbar to match the actual scroll position
+            let max_scroll = commits.len().saturating_sub(visible_height as usize);
+            let adjusted_position = std::cmp::min(commitlist_scroll, max_scroll);
+            
+            let commit_scrollbar = Scrollbar::default()
+                .orientation(ScrollbarOrientation::VerticalRight);
+            let mut commit_scrollbar_state = ScrollbarState::default()
+                .position(adjusted_position)
+                .content_length(commits.len());
+            f.render_stateful_widget(commit_scrollbar, commit_layout[1], &mut commit_scrollbar_state);
 
             // Detailview
             if show_details {
@@ -573,6 +687,12 @@ fn render_commits(
                             "Could not extract commit hash.".to_string()
                         };
 
+                        // Detail view layout with scrollbar
+                        let detail_layout = Layout::default()
+                            .direction(Direction::Horizontal)
+                            .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
+                            .split(vertical_chunks[1]);
+
                         let detail_block = Block::default()
                             .title("Details")
                             .borders(Borders::ALL)
@@ -583,12 +703,21 @@ fn render_commits(
                                     Style::default().fg(Color::Magenta)
                                 }
                             );
-                        let details_widget = Paragraph::new(details)
+                        let details_widget = Paragraph::new(details.clone())
                             .block(detail_block)
                             .wrap(Wrap { trim: true })
                             .scroll((detail_scroll, 0))
                             .style(Style::default().fg(Color::White));
-                        f.render_widget(details_widget, vertical_chunks[1]);
+                        f.render_widget(details_widget, detail_layout[0]);
+                        
+                        // Detail scrollbar
+                        let detail_lines = details.lines().count();
+                        let detail_scrollbar = Scrollbar::default()
+                            .orientation(ScrollbarOrientation::VerticalRight);
+                        let mut detail_scrollbar_state = ScrollbarState::default()
+                            .position(detail_scroll as usize) // Convert detail_scroll from u16 to usize
+                            .content_length(detail_lines);
+                        f.render_stateful_widget(detail_scrollbar, detail_layout[1], &mut detail_scrollbar_state);
                     }
                 }
             }
