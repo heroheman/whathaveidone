@@ -25,7 +25,8 @@ fn main() -> anyhow::Result<()> {
     ];
     let mut current_index = intervals.iter().position(|(_, d)| *d == initial_interval).unwrap_or(0);
     let mut current_interval = intervals[current_index].1;
-    let mut commits = reload_commits(&repos, current_interval)?;
+    let mut filter_by_user = true; // Default: only show my commits
+    let mut commits = reload_commits(&repos, current_interval, filter_by_user)?;
     let mut selected_repo_index = usize::MAX; // Default to showing all repositories
     let mut selected_commit_index: Option<usize> = None; // Track the selected commit index
     let mut show_details = false; // Whether to show the detailed view
@@ -58,6 +59,7 @@ fn main() -> anyhow::Result<()> {
                 sidebar_scroll,
                 commitlist_scroll,
                 detail_scroll,
+                filter_by_user, // NEW: pass flag
             );
         })?;
 
@@ -261,18 +263,17 @@ fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
+                    KeyCode::Char('u') => {
+                        filter_by_user = !filter_by_user;
+                        commits = reload_commits(&repos, current_interval, filter_by_user)?;
+                        selected_commit_index = None;
+                        detail_scroll = 0;
+                    }
                     KeyCode::Char('q') => break,
                     _ => {}
                 }
-                
-                // Only reload commits when the interval changes
-                if intervals[current_index].1 != current_interval {
-                    current_interval = intervals[current_index].1;
-                    commits = reload_commits(&repos, current_interval)?;
-                    // Reset selection state when data changes
-                    selected_commit_index = None;
-                    detail_scroll = 0;
-                }
+                current_interval = intervals[current_index].1;
+                commits = reload_commits(&repos, current_interval, filter_by_user)?;
             }
         }
     }
@@ -315,29 +316,50 @@ fn find_git_repos(start_dir: &str) -> anyhow::Result<Vec<PathBuf>> {
     Ok(repos)
 }
 
-fn get_recent_commits(repo: &PathBuf, interval: Duration) -> anyhow::Result<Vec<String>> {
+// NEW: Get current git user email
+fn get_current_git_user() -> anyhow::Result<String> {
+    let output = Command::new("git")
+        .arg("config")
+        .arg("user.email")
+        .output()?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        Err(anyhow::anyhow!(
+            "Failed to get git user email: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
+    }
+}
+
+// Modified: add filter_by_user param
+fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bool) -> anyhow::Result<Vec<String>> {
     let since = SystemTime::now() - interval;
     let since_datetime: DateTime<Local> = since.into();
     let since_str = since_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
 
-    let output = Command::new("git")
-        .arg("-C")
-        .arg(repo)
+    let mut cmd = Command::new("git");
+    cmd.arg("-C").arg(repo)
         .arg("log")
-        .arg("--since")
-        .arg(&since_str)
-        .arg("--pretty=format:%h %an %ar %s")
-        .output()?;
+        .arg("--since").arg(&since_str)
+        .arg("--pretty=format:%h %an %ar %s");
+    if filter_by_user {
+        if let Ok(user) = get_current_git_user() {
+            cmd.arg("--author").arg(user);
+        }
+    }
+    let output = cmd.output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let lines = stdout.lines().map(|s| s.to_string()).collect();
     Ok(lines)
 }
 
-fn reload_commits(repos: &Vec<PathBuf>, duration: Duration) -> anyhow::Result<Vec<(PathBuf, Vec<String>)>> {
+// Modified: add filter_by_user param
+fn reload_commits(repos: &Vec<PathBuf>, duration: Duration, filter_by_user: bool) -> anyhow::Result<Vec<(PathBuf, Vec<String>)>> {
     let mut commits = vec![];
     for repo in repos {
-        let repo_commits = get_recent_commits(repo, duration)?;
+        let repo_commits = get_recent_commits(repo, duration, filter_by_user)?;
         if !repo_commits.is_empty() {
             commits.push((repo.clone(), repo_commits));
         }
@@ -404,6 +426,7 @@ fn render_commits(
     _sidebar_scroll: usize,      // Prefixed with underscore since it's unused
     mut commitlist_scroll: usize, // Made mutable to allow modification
     detail_scroll: u16,
+    filter_by_user: bool, // NEW: add param
 ) {
     let area = f.area();
     let chunks = Layout::default()
@@ -485,11 +508,23 @@ fn render_commits(
         .split(vertical_chunks[0]);
 
     let header_text = if selected_repo_index == usize::MAX {
-        format!("Standup Commits – Zeitfenster: {}", interval_label)
+        if filter_by_user {
+            format!("Standup Commits (nur eigene) – Zeitfenster: {}", interval_label)
+        } else {
+            format!("Standup Commits – Zeitfenster: {}", interval_label)
+        }
     } else if let Some((repo, _)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
-        format!("{} – Zeitfenster: {}", repo.file_name().unwrap_or_default().to_string_lossy(), interval_label)
+        if filter_by_user {
+            format!("{} (nur eigene) – Zeitfenster: {}", repo.file_name().unwrap_or_default().to_string_lossy(), interval_label)
+        } else {
+            format!("{} – Zeitfenster: {}", repo.file_name().unwrap_or_default().to_string_lossy(), interval_label)
+        }
     } else {
-        format!("Standup Commits – Zeitfenster: {}", interval_label)
+        if filter_by_user {
+            format!("Standup Commits (nur eigene) – Zeitfenster: {}", interval_label)
+        } else {
+            format!("Standup Commits – Zeitfenster: {}", interval_label)
+        }
     };
 
     // Calculate the visible height of the commit list area for proper scrolling
@@ -509,10 +544,22 @@ fn render_commits(
                 } else {
                     Style::default().fg(Color::White)
                 };
-                 ListItem::new(format!(
+                // Remove author if filter_by_user is active
+                let commit_str = if filter_by_user {
+                    // Remove the author (assume format: "%h %an %ar %s")
+                    let mut parts = commit.splitn(4, ' ');
+                    let hash = parts.next().unwrap_or("");
+                    let _author = parts.next();
+                    let rel = parts.next().unwrap_or("");
+                    let msg = parts.next().unwrap_or("");
+                    format!("{} {} {}", hash, rel, msg)
+                } else {
+                    commit.to_string()
+                };
+                ListItem::new(format!(
                     "{} {}",
                     if Some(global_commit_idx) == selected_commit_index { "→" } else { " " },
-                    commit
+                    commit_str
                 )).style(style)
             }));
             current_commit_offset += commits.len();
@@ -636,10 +683,21 @@ fn render_commits(
                     } else {
                         Style::default().fg(Color::White)
                     };
+                    // Remove author if filter_by_user is active
+                    let commit_str = if filter_by_user {
+                        let mut parts = commit.splitn(4, ' ');
+                        let hash = parts.next().unwrap_or("");
+                        let _author = parts.next();
+                        let rel = parts.next().unwrap_or("");
+                        let msg = parts.next().unwrap_or("");
+                        format!("{} {} {}", hash, rel, msg)
+                    } else {
+                        commit.to_string()
+                    };
                     ListItem::new(format!(
                         "{} {}",
                         if Some(i) == selected_commit_index { "→" } else { " " },
-                        commit
+                        commit_str
                     ))
                     .style(style)
                 })
@@ -741,9 +799,9 @@ fn render_commits(
         }
     }
 
-    // Footer für Keybindings
+    // Footer für Keybindings (add 'u')
     let footer = Paragraph::new(
-        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | q Beenden",
+        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | u Nur eigene | q Beenden",
     )
     .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks.last().unwrap().clone());
