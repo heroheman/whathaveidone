@@ -110,12 +110,29 @@ fn main() -> anyhow::Result<()> {
                             }
                             FocusArea::CommitList => {
                                 // Commitlist: Commits hoch navigieren
-                                if let Some(index) = selected_commit_index {
-                                    if index > 0 {
-                                        selected_commit_index = Some(index - 1);
+                                if selected_repo_index == usize::MAX {
+                                    // "Alle"-View: globaler Index
+                                    if let Some(index) = selected_commit_index {
+                                        if index > 0 {
+                                            selected_commit_index = Some(index - 1);
+                                        }
+                                    } else {
+                                        // Wenn noch nichts selektiert, auf ersten Commit gehen
+                                        // Finde ersten Commit (global index 0, falls es Commits gibt)
+                                        let total_commits: usize = commits.iter().map(|(_, c)| c.len()).sum();
+                                        if total_commits > 0 {
+                                            selected_commit_index = Some(0);
+                                        }
                                     }
                                 } else {
-                                    selected_commit_index = Some(0);
+                                    // Einzel-Repo-View wie gehabt
+                                    if let Some(index) = selected_commit_index {
+                                        if index > 0 {
+                                            selected_commit_index = Some(index - 1);
+                                        }
+                                    } else {
+                                        selected_commit_index = Some(0);
+                                    }
                                 }
                             }
                             FocusArea::Detail => {
@@ -139,14 +156,28 @@ fn main() -> anyhow::Result<()> {
                                 selected_commit_index = None;
                             }
                             FocusArea::CommitList => {
-                                // Commitlist: Commits runter navigieren
-                                if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
-                                    if let Some(index) = selected_commit_index {
-                                        if index < repo_commits.len() - 1 {
+                                if selected_repo_index == usize::MAX {
+                                    // "Alle"-View: globaler Index
+                                    let total_commits: usize = commits.iter().map(|(_, c)| c.len()).sum();
+                                    if total_commits == 0 {
+                                        selected_commit_index = None;
+                                    } else if let Some(index) = selected_commit_index {
+                                        if index < total_commits - 1 {
                                             selected_commit_index = Some(index + 1);
                                         }
                                     } else {
                                         selected_commit_index = Some(0);
+                                    }
+                                } else {
+                                    // Einzel-Repo-View wie gehabt
+                                    if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
+                                        if let Some(index) = selected_commit_index {
+                                            if index < repo_commits.len() - 1 {
+                                                selected_commit_index = Some(index + 1);
+                                            }
+                                        } else {
+                                            selected_commit_index = Some(0);
+                                        }
                                     }
                                 }
                             }
@@ -362,6 +393,45 @@ fn render_commits(
         let list = List::new(items).block(commitlist_block);
         f.render_widget(list, vertical_chunks[0]);
 
+        // Navigierbarkeit für "Alle"-View: Detailview für selektierten Commit anzeigen
+        if show_details {
+            if let Some(global_index) = selected_commit_index {
+                // Finde das Repo und den Commit anhand des globalen Index
+                let mut idx = 0;
+                for (repo, commits) in data {
+                    if global_index < idx + commits.len() {
+                        let commit = &commits[global_index - idx];
+                        let commit_hash = commit.split_whitespace().next().unwrap_or("");
+                        let details = if !commit_hash.is_empty() {
+                            match get_commit_details(repo, commit_hash) {
+                                Ok(d) => d,
+                                Err(e) => format!("Error fetching details: {}", e),
+                            }
+                        } else {
+                            "Could not extract commit hash.".to_string()
+                        };
+
+                        let detail_block = Block::default()
+                            .title("Details")
+                            .borders(Borders::ALL)
+                            .style(
+                                if focus == FocusArea::Detail {
+                                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().fg(Color::Magenta)
+                                }
+                            );
+                        let details_widget = Paragraph::new(details)
+                            .block(detail_block)
+                            .wrap(Wrap { trim: true })
+                            .style(Style::default().fg(Color::White));
+                        f.render_widget(details_widget, vertical_chunks[1]);
+                        break;
+                    }
+                    idx += commits.len();
+                }
+            }
+        }
     } else {
         // Commits für ausgewähltes Repo
         if let Some((repo, commits)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
