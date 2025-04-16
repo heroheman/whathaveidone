@@ -264,8 +264,15 @@ fn main() -> anyhow::Result<()> {
                     KeyCode::Char('q') => break,
                     _ => {}
                 }
-                current_interval = intervals[current_index].1;
-                commits = reload_commits(&repos, current_interval)?;
+                
+                // Only reload commits when the interval changes
+                if intervals[current_index].1 != current_interval {
+                    current_interval = intervals[current_index].1;
+                    commits = reload_commits(&repos, current_interval)?;
+                    // Reset selection state when data changes
+                    selected_commit_index = None;
+                    detail_scroll = 0;
+                }
             }
         }
     }
