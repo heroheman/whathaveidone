@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
                                 if selected_commit_index.is_none() {
                                     if selected_repo_index == usize::MAX {
                                         let total_commits: usize = commits.iter().map(|(_, c)| c.len()).sum();
-                                        if total_commits > 0 {
+                                        if (total_commits > 0) {
                                             selected_commit_index = Some(0);
                                         }
                                     } else if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
@@ -341,13 +341,21 @@ fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bool) 
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(repo)
         .arg("log")
-        .arg("--since").arg(&since_str)
-        .arg("--pretty=format:%h %an %ar %s");
+        .arg("--since").arg(&since_str);
+
     if filter_by_user {
+        // Only show my commits, and omit author from output
+        // Format: "%h %ar %s"
+        cmd.arg("--pretty=format:%h %ar %s");
         if let Ok(user) = get_current_git_user() {
             cmd.arg("--author").arg(user);
         }
+    } else {
+        // Show all commits, include author
+        // Format: "%h %an %ar %s"
+        cmd.arg("--pretty=format:%h %an %ar %s");
     }
+
     let output = cmd.output()?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -544,18 +552,8 @@ fn render_commits(
                 } else {
                     Style::default().fg(Color::White)
                 };
-                // Remove author if filter_by_user is active
-                let commit_str = if filter_by_user {
-                    // Remove the author (assume format: "%h %an %ar %s")
-                    let mut parts = commit.splitn(4, ' ');
-                    let hash = parts.next().unwrap_or("");
-                    let _author = parts.next();
-                    let rel = parts.next().unwrap_or("");
-                    let msg = parts.next().unwrap_or("");
-                    format!("{} {} {}", hash, rel, msg)
-                } else {
-                    commit.to_string()
-                };
+                // No need to parse/strip author, as git log output is already correct
+                let commit_str = commit.to_string();
                 ListItem::new(format!(
                     "{} {}",
                     if Some(global_commit_idx) == selected_commit_index { "→" } else { " " },
@@ -683,17 +681,8 @@ fn render_commits(
                     } else {
                         Style::default().fg(Color::White)
                     };
-                    // Remove author if filter_by_user is active
-                    let commit_str = if filter_by_user {
-                        let mut parts = commit.splitn(4, ' ');
-                        let hash = parts.next().unwrap_or("");
-                        let _author = parts.next();
-                        let rel = parts.next().unwrap_or("");
-                        let msg = parts.next().unwrap_or("");
-                        format!("{} {} {}", hash, rel, msg)
-                    } else {
-                        commit.to_string()
-                    };
+                    // No need to parse/strip author, as git log output is already correct
+                    let commit_str = commit.to_string();
                     ListItem::new(format!(
                         "{} {}",
                         if Some(i) == selected_commit_index { "→" } else { " " },
