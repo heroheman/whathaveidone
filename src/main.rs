@@ -1,8 +1,10 @@
 // src/main.rs
 use std::{env, fs, path::PathBuf, process::Command, time::{Duration, SystemTime}};
 use chrono::{DateTime, Local};
-use ratatui::{prelude::*, widgets::*, widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, ListState}};
-use crossterm::{event::{self, Event, KeyCode}, execute, terminal::{self, Clear, ClearType}};
+use ratatui::{prelude::*, widgets::*, widgets::{Scrollbar, ScrollbarOrientation, ScrollbarState, ListState, Clear}};
+use crossterm::{event::{self, Event, KeyCode}, execute, terminal::{self, Clear as CrosstermClear, ClearType}};
+use std::sync::{Arc, Mutex};
+use tokio::runtime::Runtime;
 
 // Fokusbereiche
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -10,6 +12,12 @@ enum FocusArea {
     Sidebar,
     CommitList,
     Detail,
+}
+
+struct PopupQuote {
+    visible: bool,
+    text: String,
+    loading: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -37,13 +45,23 @@ fn main() -> anyhow::Result<()> {
     let mut commitlist_scroll: usize = 0;
     let mut detail_scroll: u16 = 0;
 
+    // Popup state for quote
+    let popup_quote = Arc::new(Mutex::new(PopupQuote {
+        visible: false,
+        text: String::new(),
+        loading: false,
+    }));
+
+    // Create a tokio runtime for async tasks
+    let rt = Runtime::new()?;
+
     terminal::enable_raw_mode()?;
     let stdout = std::io::stdout();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
     // Clear the terminal screen to avoid artifacts
-    execute!(std::io::stdout(), Clear(ClearType::All))?;
+    execute!(std::io::stdout(), CrosstermClear(ClearType::All))?;
 
     // Reduce poll timeout for more responsive navigation
     let poll_timeout = std::time::Duration::from_millis(30);
@@ -63,6 +81,7 @@ fn main() -> anyhow::Result<()> {
                 commitlist_scroll,
                 detail_scroll,
                 filter_by_user, // NEW: pass flag
+                Some(&popup_quote), // pass popup state
             );
         })?;
 
@@ -93,7 +112,7 @@ fn main() -> anyhow::Result<()> {
                                 if selected_commit_index.is_none() {
                                     if selected_repo_index == usize::MAX {
                                         let total_commits: usize = commits.iter().map(|(_, c)| c.len()).sum();
-                                        if (total_commits > 0) {
+                                        if total_commits > 0 {
                                             selected_commit_index = Some(0);
                                         }
                                     } else if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
@@ -274,10 +293,30 @@ fn main() -> anyhow::Result<()> {
                         detail_scroll = 0;
                     }
                     KeyCode::Char('q') => break,
+                    KeyCode::Char('z') => {
+                        // Show popup and fetch quote asynchronously
+                        {
+                            let mut popup = popup_quote.lock().unwrap();
+                            popup.visible = true;
+                            popup.loading = true;
+                            popup.text = String::from("Lade Zitat...");
+                        }
+                        let popup_clone = popup_quote.clone();
+                        rt.spawn(async move {
+                            let quote = fetch_quote().await.unwrap_or_else(|e| format!("Fehler: {}", e));
+                            let mut popup = popup_clone.lock().unwrap();
+                            popup.text = quote;
+                            popup.loading = false;
+                        });
+                    }
+                    KeyCode::Esc => {
+                        // Hide popup
+                        let mut popup = popup_quote.lock().unwrap();
+                        popup.visible = false;
+                    }
                     _ => {}
                 }
                 current_interval = intervals[current_index].1;
-                commits = reload_commits(&repos, current_interval, filter_by_user)?;
             }
         }
     }
@@ -445,6 +484,7 @@ fn render_commits(
     mut commitlist_scroll: usize, // Made mutable to allow modification
     detail_scroll: u16,
     filter_by_user: bool, // NEW: add param
+    popup_quote: Option<&Arc<Mutex<PopupQuote>>>, // NEW
 ) {
     let area = f.area();
 
@@ -780,7 +820,7 @@ fn render_commits(
         "u: Alle"
     };
     let footer_text = format!(
-        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | {} | q Beenden",
+        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | {} | z: Zitat | q Beenden",
         filter_label
     );
     let footer_block = Block::default().borders(Borders::ALL);
@@ -789,6 +829,25 @@ fn render_commits(
         .block(footer_block)
         .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, footer_area);
+
+    // --- Popup quote ---
+    if let Some(popup_arc) = popup_quote {
+        let popup = popup_arc.lock().unwrap();
+        if popup.visible {
+            let popup_area = centered_rect(60, 20, f.area());
+            f.render_widget(Clear, popup_area); // clear background
+            let block = Block::default()
+                .title("Zitat des Tages (ESC zum Schließen)")
+                .borders(Borders::ALL)
+                .style(Style::default().fg(Color::Magenta).bg(Color::Black));
+            let para = Paragraph::new(popup.text.clone())
+                .block(block)
+                .wrap(Wrap { trim: true })
+                .alignment(Alignment::Center)
+                .style(Style::default().fg(Color::White));
+            f.render_widget(para, popup_area);
+        }
+    }
 }
 
 // Add this new function to fetch commit details
@@ -864,4 +923,36 @@ fn calculate_max_scroll(content: String, view_height: u16) -> anyhow::Result<u16
     
     // Otherwise, max scroll is content lines minus visible lines
     Ok(content_lines.saturating_sub(visible_lines))
+}
+
+// Async fetch quote function
+async fn fetch_quote() -> Result<String, reqwest::Error> {
+    use reqwest::Response; // Ensure reqwest::Response is in scope for .json()
+    let resp = reqwest::get("https://dummyjson.com/quotes/random").await?;
+    let json: serde_json::Value = resp.json().await?;
+    let quote = json.get("quote").and_then(|q| q.as_str()).unwrap_or("Kein Zitat gefunden.");
+    let author = json.get("author").and_then(|a| a.as_str()).unwrap_or("");
+    Ok(format!("{}\n\n— {}", quote, author))
+}
+
+// Helper for centered popup
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+    let vertical = popup_layout[1];
+    let horizontal = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(vertical);
+    horizontal[1]
 }
