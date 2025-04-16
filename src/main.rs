@@ -605,11 +605,14 @@ fn render_commits(
 
 // Add this new function to fetch commit details
 fn get_commit_details(repo: &PathBuf, commit_hash: &str) -> anyhow::Result<String> {
+    // Show meta info and file list, omit full diff
     let output = Command::new("git")
         .arg("-C")
         .arg(repo)
         .arg("show")
-        .arg("--pretty=fuller") // Use a format that includes more details
+        .arg("--pretty=fuller")   // all meta info
+        .arg("--name-status")     // file list with status (M, A, D, etc.)
+        // .arg("--no-patch")     // remove: conflicts with --name-status
         .arg(commit_hash)
         .output()?;
 
