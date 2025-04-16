@@ -31,6 +31,11 @@ fn main() -> anyhow::Result<()> {
     let mut show_details = false; // Whether to show the detailed view
     let mut focus = FocusArea::Sidebar; // Initialer Fokus auf Sidebar
 
+    // Scroll-Offsets für die drei Bereiche
+    let mut sidebar_scroll: usize = 0;
+    let mut commitlist_scroll: usize = 0;
+    let mut detail_scroll: u16 = 0;
+
     terminal::enable_raw_mode()?;
     let stdout = std::io::stdout();
     let backend = CrosstermBackend::new(stdout);
@@ -50,6 +55,9 @@ fn main() -> anyhow::Result<()> {
                 selected_commit_index,
                 show_details,
                 focus,
+                sidebar_scroll,
+                commitlist_scroll,
+                detail_scroll,
             );
         })?;
 
@@ -107,6 +115,12 @@ fn main() -> anyhow::Result<()> {
                                     selected_repo_index = usize::MAX;
                                 }
                                 selected_commit_index = None;
+                                // Scrollbar für Sidebar
+                                if selected_repo_index == usize::MAX {
+                                    sidebar_scroll = 0;
+                                } else if selected_repo_index < sidebar_scroll {
+                                    sidebar_scroll = selected_repo_index;
+                                }
                             }
                             FocusArea::CommitList => {
                                 // Commitlist: Commits hoch navigieren
@@ -134,9 +148,21 @@ fn main() -> anyhow::Result<()> {
                                         selected_commit_index = Some(0);
                                     }
                                 }
+                                // Scrollbar für CommitList
+                                let (_visible, _total) = get_commitlist_visible_and_total(&commits, selected_repo_index);
+                                if let Some(idx) = selected_commit_index {
+                                    if idx < commitlist_scroll {
+                                        commitlist_scroll = idx;
+                                    }
+                                } else {
+                                    commitlist_scroll = 0;
+                                }
                             }
                             FocusArea::Detail => {
-                                // Optional: Scrollen im Detailview (kann später ergänzt werden)
+                                // Scroll im Detailview nach oben
+                                if detail_scroll > 0 {
+                                    detail_scroll -= 1;
+                                }
                             }
                         }
                     }
@@ -154,6 +180,18 @@ fn main() -> anyhow::Result<()> {
                                     selected_repo_index = usize::MAX;
                                 }
                                 selected_commit_index = None;
+                                // Scrollbar für Sidebar
+                                let filtered_repos: Vec<&PathBuf> = commits.iter().map(|(repo, _)| repo).collect();
+                                let repo_count = filtered_repos.len();
+                                let sidebar_len = repo_count + 1;
+                                if selected_repo_index == usize::MAX {
+                                    sidebar_scroll = 0;
+                                } else if selected_repo_index >= sidebar_scroll + get_sidebar_height()? {
+                                    sidebar_scroll = selected_repo_index + 1 - get_sidebar_height()?;
+                                }
+                                if sidebar_scroll > sidebar_len.saturating_sub(get_sidebar_height()?) {
+                                    sidebar_scroll = sidebar_len.saturating_sub(get_sidebar_height()?);
+                                }
                             }
                             FocusArea::CommitList => {
                                 if selected_repo_index == usize::MAX {
@@ -180,9 +218,21 @@ fn main() -> anyhow::Result<()> {
                                         }
                                     }
                                 }
+                                // Scrollbar für CommitList
+                                let (_visible, _total) = get_commitlist_visible_and_total(&commits, selected_repo_index);
+                                if let Some(idx) = selected_commit_index {
+                                    let height = get_commitlist_height()?;
+                                    if idx >= commitlist_scroll + height {
+                                        commitlist_scroll = idx + 1 - height;
+                                    }
+                                    if commitlist_scroll > _total.saturating_sub(height) {
+                                        commitlist_scroll = _total.saturating_sub(height);
+                                    }
+                                }
                             }
                             FocusArea::Detail => {
-                                // Optional: Scrollen im Detailview (kann später ergänzt werden)
+                                // Scroll im Detailview nach unten
+                                detail_scroll = detail_scroll.saturating_add(1);
                             }
                         }
                     }
@@ -277,6 +327,28 @@ fn get_active_commits<'a>(
     }
 }
 
+// Hilfsfunktionen für Scrollhöhe (abhängig von Terminalgröße)
+fn get_sidebar_height() -> anyhow::Result<usize> {
+    let (_cols, rows) = crossterm::terminal::size()?;
+    Ok(rows.saturating_sub(2) as usize) // 2 Zeilen für Rahmen
+}
+fn get_commitlist_height() -> anyhow::Result<usize> {
+    let (_cols, rows) = crossterm::terminal::size()?;
+    // 2 Zeilen für Rahmen, 1 für Footer, ggf. 15 für Details
+    Ok(rows.saturating_sub(2 + 1 + 15) as usize)
+}
+
+// Liefert (sichtbare Höhe, Gesamtzahl) für Commitlist
+fn get_commitlist_visible_and_total(commits: &Vec<(PathBuf, Vec<String>)>, selected_repo_index: usize) -> (usize, usize) {
+    if selected_repo_index == usize::MAX {
+        let total: usize = commits.iter().map(|(_, c)| c.len()).sum();
+        (0, total)
+    } else {
+        let total = commits.get(selected_repo_index).map(|(_, c)| c.len()).unwrap_or(0);
+        (0, total)
+    }
+}
+
 fn render_commits(
     f: &mut Frame,
     _repos: &Vec<PathBuf>, // Prefix unused parameter
@@ -286,6 +358,9 @@ fn render_commits(
     selected_commit_index: Option<usize>,
     show_details: bool,
     focus: FocusArea, // <-- Fokus-Parameter
+    _sidebar_scroll: usize,      // unused, prefix with _
+    _commitlist_scroll: usize,   // unused, prefix with _
+    detail_scroll: u16,
 ) {
     let area = f.area();
     let chunks = Layout::default()
@@ -333,7 +408,8 @@ fn render_commits(
                 Style::default().fg(Color::Cyan)
             }
         );
-    let sidebar = List::new(repo_list).block(sidebar_block);
+    let sidebar = List::new(repo_list)
+        .block(sidebar_block);
     f.render_widget(sidebar, chunks[0]);
 
     // Main area für Commits
@@ -390,7 +466,8 @@ fn render_commits(
                     Style::default().fg(Color::Cyan)
                 }
             );
-        let list = List::new(items).block(commitlist_block);
+        let list = List::new(items)
+            .block(commitlist_block);
         f.render_widget(list, vertical_chunks[0]);
 
         // Navigierbarkeit für "Alle"-View: Detailview für selektierten Commit anzeigen
@@ -424,6 +501,7 @@ fn render_commits(
                         let details_widget = Paragraph::new(details)
                             .block(detail_block)
                             .wrap(Wrap { trim: true })
+                            .scroll((detail_scroll, 0))
                             .style(Style::default().fg(Color::White));
                         f.render_widget(details_widget, vertical_chunks[1]);
                         break;
@@ -462,7 +540,8 @@ fn render_commits(
                         Style::default().fg(Color::Cyan)
                     }
                 );
-            let commit_widget = List::new(commit_list).block(commitlist_block);
+            let commit_widget = List::new(commit_list)
+                .block(commitlist_block);
             f.render_widget(commit_widget, vertical_chunks[0]);
 
             // Detailview
@@ -492,7 +571,7 @@ fn render_commits(
                         let details_widget = Paragraph::new(details)
                             .block(detail_block)
                             .wrap(Wrap { trim: true })
-                            .scroll((selected_commit_index.unwrap_or(0) as u16, 0))
+                            .scroll((detail_scroll, 0))
                             .style(Style::default().fg(Color::White));
                         f.render_widget(details_widget, vertical_chunks[1]);
                     }
@@ -503,7 +582,7 @@ fn render_commits(
 
     // Footer für Keybindings
     let footer = Paragraph::new(
-        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation | Tab Fokus | Space Details | q Beenden",
+        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | q Beenden",
     )
     .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks.last().unwrap().clone());
