@@ -4,6 +4,14 @@ use chrono::{DateTime, Local};
 use ratatui::{prelude::*, widgets::*};
 use crossterm::{event::{self, Event, KeyCode}, execute, terminal::{self, Clear, ClearType}};
 
+// Fokusbereiche
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FocusArea {
+    Sidebar,
+    CommitList,
+    Detail,
+}
+
 fn main() -> anyhow::Result<()> {
     let initial_interval = parse_args();
     let repos = find_git_repos(".")?;
@@ -21,6 +29,7 @@ fn main() -> anyhow::Result<()> {
     let mut selected_repo_index = usize::MAX; // Default to showing all repositories
     let mut selected_commit_index: Option<usize> = None; // Track the selected commit index
     let mut show_details = false; // Whether to show the detailed view
+    let mut focus = FocusArea::Sidebar; // Initialer Fokus auf Sidebar
 
     terminal::enable_raw_mode()?;
     let stdout = std::io::stdout();
@@ -40,6 +49,7 @@ fn main() -> anyhow::Result<()> {
                 intervals[current_index].0,
                 selected_commit_index,
                 show_details,
+                focus,
             );
         })?;
 
@@ -62,39 +72,88 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                     KeyCode::Tab => {
-                        let filtered_repos: Vec<&PathBuf> = commits.iter().map(|(repo, _)| repo).collect();
-                        if selected_repo_index == usize::MAX {
-                            selected_repo_index = 0;
-                        } else {
-                            selected_repo_index = (selected_repo_index + 1) % filtered_repos.len();
-                            if selected_repo_index == 0 {
-                                selected_repo_index = usize::MAX; // Return to showing all
+                        // Fokus zyklisch wechseln
+                        focus = match focus {
+                            FocusArea::Sidebar => FocusArea::CommitList,
+                            FocusArea::CommitList => {
+                                if show_details { FocusArea::Detail } else { FocusArea::Sidebar }
+                            }
+                            FocusArea::Detail => FocusArea::Sidebar,
+                        };
+                    }
+                    KeyCode::Char(' ') => {
+                        // Toggle Detailview nur im CommitList-Fokus
+                        if focus == FocusArea::CommitList {
+                            show_details = !show_details;
+                            // Wenn Detail geschlossen wird und Fokus darauf war, zurück zu CommitList
+                            if !show_details && focus == FocusArea::Detail {
+                                focus = FocusArea::CommitList;
                             }
                         }
-                        selected_commit_index = None; // Reset commit selection
                     }
                     KeyCode::Up => {
-                        if let Some(index) = selected_commit_index {
-                            if index > 0 {
-                                selected_commit_index = Some(index - 1);
+                        match focus {
+                            FocusArea::Sidebar => {
+                                // Sidebar: Repos hoch navigieren
+                                let filtered_repos: Vec<&PathBuf> = commits.iter().map(|(repo, _)| repo).collect();
+                                let repo_count = filtered_repos.len();
+                                if selected_repo_index == usize::MAX {
+                                    if repo_count > 0 {
+                                        selected_repo_index = repo_count - 1;
+                                    }
+                                } else if selected_repo_index > 0 {
+                                    selected_repo_index -= 1;
+                                } else {
+                                    selected_repo_index = usize::MAX;
+                                }
+                                selected_commit_index = None;
                             }
-                        } else {
-                            selected_commit_index = Some(0);
+                            FocusArea::CommitList => {
+                                // Commitlist: Commits hoch navigieren
+                                if let Some(index) = selected_commit_index {
+                                    if index > 0 {
+                                        selected_commit_index = Some(index - 1);
+                                    }
+                                } else {
+                                    selected_commit_index = Some(0);
+                                }
+                            }
+                            FocusArea::Detail => {
+                                // Optional: Scrollen im Detailview (kann später ergänzt werden)
+                            }
                         }
                     }
                     KeyCode::Down => {
-                        if let Some(index) = selected_commit_index {
-                            if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
-                                if index < repo_commits.len() - 1 {
-                                    selected_commit_index = Some(index + 1);
+                        match focus {
+                            FocusArea::Sidebar => {
+                                // Sidebar: Repos runter navigieren
+                                let filtered_repos: Vec<&PathBuf> = commits.iter().map(|(repo, _)| repo).collect();
+                                let repo_count = filtered_repos.len();
+                                if selected_repo_index == usize::MAX {
+                                    selected_repo_index = 0;
+                                } else if selected_repo_index < repo_count - 1 {
+                                    selected_repo_index += 1;
+                                } else {
+                                    selected_repo_index = usize::MAX;
+                                }
+                                selected_commit_index = None;
+                            }
+                            FocusArea::CommitList => {
+                                // Commitlist: Commits runter navigieren
+                                if let Some(repo_commits) = get_active_commits(&commits, selected_repo_index) {
+                                    if let Some(index) = selected_commit_index {
+                                        if index < repo_commits.len() - 1 {
+                                            selected_commit_index = Some(index + 1);
+                                        }
+                                    } else {
+                                        selected_commit_index = Some(0);
+                                    }
                                 }
                             }
-                        } else {
-                            selected_commit_index = Some(0);
+                            FocusArea::Detail => {
+                                // Optional: Scrollen im Detailview (kann später ergänzt werden)
+                            }
                         }
-                    }
-                    KeyCode::Char(' ') => {
-                        show_details = !show_details; // Toggle detailed view
                     }
                     KeyCode::Char('q') => break,
                     _ => {}
@@ -195,6 +254,7 @@ fn render_commits(
     interval_label: &str,
     selected_commit_index: Option<usize>,
     show_details: bool,
+    focus: FocusArea, // <-- Fokus-Parameter
 ) {
     let area = f.area();
     let chunks = Layout::default()
@@ -202,16 +262,16 @@ fn render_commits(
         .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
         .split(area);
 
-    // Sidebar for repositories
+    // Sidebar für Repos
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
     let mut repo_list: Vec<ListItem> = vec![ListItem::new(format!(
         "{} Alle",
-        if selected_repo_index == usize::MAX { "→" } else { " " } // Add arrow for "Alle"
+        if selected_repo_index == usize::MAX { "→" } else { " " }
     ))
     .style(if selected_repo_index == usize::MAX {
-        Style::default().add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else {
-        Style::default()
+        Style::default().fg(Color::White)
     })];
     repo_list.extend(
         filtered_repos
@@ -220,32 +280,40 @@ fn render_commits(
             .map(|(i, repo)| {
                 let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
                 let style = if selected_repo_index == i {
-                    Style::default().add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default()
+                    Style::default().fg(Color::White)
                 };
                 ListItem::new(format!(
                     "{} {}",
-                    if selected_repo_index == i { "→" } else { " " }, // Add arrow for selected repo
+                    if selected_repo_index == i { "→" } else { " " },
                     repo_name
                 ))
                 .style(style)
             }),
     );
-    let sidebar = List::new(repo_list)
-        .block(Block::default().title("Repositories").borders(Borders::ALL));
+    let sidebar_block = Block::default()
+        .title("Repositories")
+        .borders(Borders::ALL)
+        .style(
+            if focus == FocusArea::Sidebar {
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::Cyan)
+            }
+        );
+    let sidebar = List::new(repo_list).block(sidebar_block);
     f.render_widget(sidebar, chunks[0]);
 
-    // Main area for commits
+    // Main area für Commits
     let main_area = chunks[1];
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
-            if show_details && selected_commit_index.is_some() { // Only show details pane if a commit is selected
-                // Increase the height of the details pane from 7 to 15
-                vec![Constraint::Min(0), Constraint::Length(15), Constraint::Length(1)] 
+            if show_details && selected_commit_index.is_some() {
+                vec![Constraint::Min(0), Constraint::Length(15), Constraint::Length(1)]
             } else {
-                vec![Constraint::Min(0), Constraint::Length(1)] // Adjust Min constraint if needed
+                vec![Constraint::Min(0), Constraint::Length(1)]
             },
         )
         .split(main_area);
@@ -255,65 +323,82 @@ fn render_commits(
     } else if let Some((repo, _)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
         format!("{} – Zeitfenster: {}", repo.file_name().unwrap_or_default().to_string_lossy(), interval_label)
     } else {
-        format!("Standup Commits – Zeitfenster: {}", interval_label) // Fallback
+        format!("Standup Commits – Zeitfenster: {}", interval_label)
     };
 
     if selected_repo_index == usize::MAX {
-        // Show all commits with project names as headings
+        // Alle Commits mit Projektnamen als Überschrift
         let mut items: Vec<ListItem> = vec![];
         let mut current_commit_offset = 0;
-        for (_repo_idx, (repo, commits)) in data.iter().enumerate() { // Prefix unused repo_idx
+        for (_repo_idx, (repo, commits)) in data.iter().enumerate() {
             let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
-            items.push(ListItem::new(format!("### {}", repo_name)).style(Style::default().add_modifier(Modifier::BOLD))); // Make repo name bold
+            items.push(ListItem::new(format!("### {}", repo_name)).style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
             items.extend(commits.iter().enumerate().map(|(commit_idx_in_repo, commit)| {
                 let global_commit_idx = current_commit_offset + commit_idx_in_repo;
                 let style = if Some(global_commit_idx) == selected_commit_index {
-                    Style::default().add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default()
+                    Style::default().fg(Color::White)
                 };
                  ListItem::new(format!(
                     "{} {}",
-                    if Some(global_commit_idx) == selected_commit_index { "→" } else { " " }, // Add arrow for selected commit
+                    if Some(global_commit_idx) == selected_commit_index { "→" } else { " " },
                     commit
                 )).style(style)
             }));
             current_commit_offset += commits.len();
         }
 
-        let list = List::new(items)
-            .block(Block::default().title(header_text).borders(Borders::ALL)); // Use header text as block title (this is now valid)
+        let commitlist_block = Block::default()
+            .title(header_text)
+            .borders(Borders::ALL)
+            .style(
+                if focus == FocusArea::CommitList {
+                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::Cyan)
+                }
+            );
+        let list = List::new(items).block(commitlist_block);
         f.render_widget(list, vertical_chunks[0]);
 
     } else {
-        // Show commits for the selected repository
+        // Commits für ausgewähltes Repo
         if let Some((repo, commits)) = data.iter().find(|(r, _)| *r == *filtered_repos[selected_repo_index]) {
             let commit_list: Vec<ListItem> = commits
                 .iter()
                 .enumerate()
                 .map(|(i, commit)| {
                     let style = if Some(i) == selected_commit_index {
-                        Style::default().add_modifier(Modifier::BOLD)
+                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default()
+                        Style::default().fg(Color::White)
                     };
                     ListItem::new(format!(
                         "{} {}",
-                        if Some(i) == selected_commit_index { "→" } else { " " }, // Add arrow for selected commit
+                        if Some(i) == selected_commit_index { "→" } else { " " },
                         commit
                     ))
                     .style(style)
                 })
                 .collect();
-            let commit_widget = List::new(commit_list)
-                .block(Block::default().title(header_text).borders(Borders::ALL)); // Use header text as block title (this is now valid)
+            let commitlist_block = Block::default()
+                .title(header_text)
+                .borders(Borders::ALL)
+                .style(
+                    if focus == FocusArea::CommitList {
+                        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(Color::Cyan)
+                    }
+                );
+            let commit_widget = List::new(commit_list).block(commitlist_block);
             f.render_widget(commit_widget, vertical_chunks[0]);
 
-            // Show detailed view if enabled and a commit is selected
+            // Detailview
             if show_details {
                 if let Some(index) = selected_commit_index {
                     if let Some(commit) = commits.get(index) {
-                        // Extract commit hash (first word)
                         let commit_hash = commit.split_whitespace().next().unwrap_or("");
                         let details = if !commit_hash.is_empty() {
                             match get_commit_details(repo, commit_hash) {
@@ -324,9 +409,21 @@ fn render_commits(
                             "Could not extract commit hash.".to_string()
                         };
 
+                        let detail_block = Block::default()
+                            .title("Details")
+                            .borders(Borders::ALL)
+                            .style(
+                                if focus == FocusArea::Detail {
+                                    Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)
+                                } else {
+                                    Style::default().fg(Color::Magenta)
+                                }
+                            );
                         let details_widget = Paragraph::new(details)
-                            .block(Block::default().title("Details").borders(Borders::ALL))
-                            .wrap(Wrap { trim: true }); // Add wrapping
+                            .block(detail_block)
+                            .wrap(Wrap { trim: true })
+                            .scroll((selected_commit_index.unwrap_or(0) as u16, 0))
+                            .style(Style::default().fg(Color::White));
                         f.render_widget(details_widget, vertical_chunks[1]);
                     }
                 }
@@ -334,11 +431,11 @@ fn render_commits(
         }
     }
 
-    // Footer for keybindings
+    // Footer für Keybindings
     let footer = Paragraph::new(
-        "Tasten: ←/→ Zeitfenster | ↑/↓ Commits | Tab Projekte | Space Details | q Beenden",
+        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation | Tab Fokus | Space Details | q Beenden",
     )
-    .style(Style::default().add_modifier(Modifier::DIM));
+    .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks.last().unwrap().clone());
 }
 
