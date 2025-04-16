@@ -45,6 +45,9 @@ fn main() -> anyhow::Result<()> {
     // Clear the terminal screen to avoid artifacts
     execute!(std::io::stdout(), Clear(ClearType::All))?;
 
+    // Reduce poll timeout for more responsive navigation
+    let poll_timeout = std::time::Duration::from_millis(30);
+
     loop {
         terminal.draw(|f| {
             render_commits(
@@ -63,7 +66,8 @@ fn main() -> anyhow::Result<()> {
             );
         })?;
 
-        if event::poll(std::time::Duration::from_millis(200))? {
+        // Use a shorter poll timeout for snappier key response
+        if event::poll(poll_timeout)? {
             if let Event::Key(key_event) = event::read()? {
                 match key_event.code {
                     KeyCode::Char('1') => current_index = 0,
@@ -347,7 +351,13 @@ fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bool) 
         // Only show my commits, and omit author from output
         // Format: "%h %ar %s"
         cmd.arg("--pretty=format:%h %ar %s");
-        if let Ok(user) = get_current_git_user() {
+        // Optimization: get user email only once per reload, not per repo
+        // (move user lookup out of this function)
+        // For now, cache user in a static variable
+        use std::sync::OnceLock;
+        static USER_EMAIL: OnceLock<Option<String>> = OnceLock::new();
+        let user = USER_EMAIL.get_or_init(|| get_current_git_user().ok());
+        if let Some(user) = user {
             cmd.arg("--author").arg(user);
         }
     } else {
@@ -437,12 +447,22 @@ fn render_commits(
     filter_by_user: bool, // NEW: add param
 ) {
     let area = f.area();
-    let chunks = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
+
+    // Layout: vertical split for main+footer, then horizontal for sidebar/main
+    let vertical_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(1), // main area (sidebar+main+detail)
+            Constraint::Length(3), // footer with border
+        ])
         .split(area);
 
-    // Sidebar für Repos (no scrollbar)
+    let main_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(30), Constraint::Min(1)].as_ref())
+        .split(vertical_chunks[0]);
+
+    // Sidebar (now only as tall as the main area, not behind footer)
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo, _)| repo).collect();
     let mut repo_list: Vec<ListItem> = vec![ListItem::new(format!(
         "{} Alle",
@@ -482,38 +502,32 @@ fn render_commits(
                 Style::default().fg(Color::Cyan)
             }
         );
-    
-    // Create a stateful list for the sidebar - no scrollbar needed
     let sidebar = List::new(repo_list).block(sidebar_block);
     let mut sidebar_state = ListState::default();
-    
-    // Visually select the active repository but ensure proper scrolling
     if selected_repo_index != usize::MAX {
         sidebar_state.select(Some(selected_repo_index));
     } else {
-        sidebar_state.select(Some(0)); // "Alle" is selected
+        sidebar_state.select(Some(0));
     }
-    
-    f.render_stateful_widget(sidebar, chunks[0], &mut sidebar_state);
+    f.render_stateful_widget(sidebar, main_chunks[0], &mut sidebar_state);
 
-    // Main area für Commits with scrollbar
-    let main_area = chunks[1];
-    let vertical_chunks = Layout::default()
+    // Main area (commit list + detail)
+    let commit_and_detail_chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints(
             if show_details && selected_commit_index.is_some() {
-                vec![Constraint::Min(0), Constraint::Length(15), Constraint::Length(1)]
+                vec![Constraint::Min(0), Constraint::Length(15)]
             } else {
-                vec![Constraint::Min(0), Constraint::Length(1)]
+                vec![Constraint::Min(0)]
             },
         )
-        .split(main_area);
+        .split(main_chunks[1]);
 
     // Commit list layout with scrollbar
     let commit_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
-        .split(vertical_chunks[0]);
+        .split(commit_and_detail_chunks[0]);
 
     let header_text = if selected_repo_index == usize::MAX {
         if filter_by_user {
@@ -536,10 +550,14 @@ fn render_commits(
     };
 
     // Calculate the visible height of the commit list area for proper scrolling
-    let visible_height = calculate_visible_height(f, show_details && selected_commit_index.is_some());
-    
+    let visible_height = if show_details && selected_commit_index.is_some() {
+        commit_and_detail_chunks[0].height.saturating_sub(2)
+    } else {
+        commit_and_detail_chunks[0].height.saturating_sub(2)
+    };
+
     if selected_repo_index == usize::MAX {
-        // Alle Commits mit Projektnamen als Überschrift
+        // All commits with repo name as header
         let mut items: Vec<ListItem> = vec![];
         let mut current_commit_offset = 0;
         for (_repo_idx, (repo, commits)) in data.iter().enumerate() {
@@ -550,19 +568,14 @@ fn render_commits(
                 let style = if Some(global_commit_idx) == selected_commit_index {
                     Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else {
-                    Style::default().fg(Color::White)
+                    Style::default()
                 };
-                // No need to parse/strip author, as git log output is already correct
-                let commit_str = commit.to_string();
-                ListItem::new(format!(
-                    "{} {}",
-                    if Some(global_commit_idx) == selected_commit_index { "→" } else { " " },
-                    commit_str
-                )).style(style)
+                // Remove color coding, show plain commit string
+                let indicator = if Some(global_commit_idx) == selected_commit_index { "→ " } else { "  " };
+                ListItem::new(format!("{}{}", indicator, commit)).style(style)
             }));
             current_commit_offset += commits.len();
         }
-
         let commitlist_block = Block::default()
             .title(header_text)
             .borders(Borders::ALL)
@@ -573,39 +586,26 @@ fn render_commits(
                     Style::default().fg(Color::Cyan)
                 }
             );
-        
-        // Create stateful list for commits
         let list = List::new(items).block(commitlist_block);
         let mut list_state = ListState::default();
-        
-        // Check if we need to limit scrolling to prevent going out of view
         if let Some(index) = selected_commit_index {
-            // Ensure scroll position keeps the selected item in view
             let total_items = data.iter().map(|(_, c)| c.len()).sum::<usize>();
             let max_scroll = total_items.saturating_sub(visible_height as usize);
-            
-            // Adjust commitlist_scroll to keep index visible
             if index < commitlist_scroll {
-                // Selected item is above current scroll - move up
                 commitlist_scroll = index;
             } else if index >= commitlist_scroll + visible_height as usize {
-                // Selected item is below visible area - move down but don't exceed max
                 commitlist_scroll = std::cmp::min(
                     index + 1 - visible_height as usize,
                     max_scroll
                 );
             }
-            
             list_state.select(Some(index));
         }
-        
         f.render_stateful_widget(list, commit_layout[0], &mut list_state);
-        
-        // Update scrollbar to match the actual scroll position
+
         let total_commits: usize = data.iter().map(|(_, c)| c.len()).sum();
         let max_scroll = total_commits.saturating_sub(visible_height as usize);
         let adjusted_position = std::cmp::min(commitlist_scroll, max_scroll);
-        
         let commit_scrollbar = Scrollbar::default()
             .orientation(ScrollbarOrientation::VerticalRight);
         let mut commit_scrollbar_state = ScrollbarState::default()
@@ -635,7 +635,7 @@ fn render_commits(
                         let detail_layout = Layout::default()
                             .direction(Direction::Horizontal)
                             .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
-                            .split(vertical_chunks[1]);
+                            .split(commit_and_detail_chunks[1]);
 
                         let detail_block = Block::default()
                             .title("Details")
@@ -679,16 +679,11 @@ fn render_commits(
                     let style = if Some(i) == selected_commit_index {
                         Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                     } else {
-                        Style::default().fg(Color::White)
+                        Style::default()
                     };
-                    // No need to parse/strip author, as git log output is already correct
-                    let commit_str = commit.to_string();
-                    ListItem::new(format!(
-                        "{} {}",
-                        if Some(i) == selected_commit_index { "→" } else { " " },
-                        commit_str
-                    ))
-                    .style(style)
+                    // Remove color coding, show plain commit string
+                    let indicator = if Some(i) == selected_commit_index { "→ " } else { "  " };
+                    ListItem::new(format!("{}{}", indicator, commit)).style(style)
                 })
                 .collect();
             let commitlist_block = Block::default()
@@ -701,17 +696,11 @@ fn render_commits(
                         Style::default().fg(Color::Cyan)
                     }
                 );
-            
-            // Create stateful list for commits
             let commit_widget = List::new(commit_list).block(commitlist_block);
             let mut commit_state = ListState::default();
-            
-            // Similar logic to prevent scrolling out of view
             if let Some(index) = selected_commit_index {
                 let commit_count = commits.len();
                 let max_scroll = commit_count.saturating_sub(visible_height as usize);
-                
-                // Adjust commitlist_scroll to keep index visible
                 if index < commitlist_scroll {
                     commitlist_scroll = index;
                 } else if index >= commitlist_scroll + visible_height as usize {
@@ -720,16 +709,12 @@ fn render_commits(
                         max_scroll
                     );
                 }
-                
                 commit_state.select(Some(index));
             }
-            
             f.render_stateful_widget(commit_widget, commit_layout[0], &mut commit_state);
-            
-            // Update scrollbar to match the actual scroll position
+
             let max_scroll = commits.len().saturating_sub(visible_height as usize);
             let adjusted_position = std::cmp::min(commitlist_scroll, max_scroll);
-            
             let commit_scrollbar = Scrollbar::default()
                 .orientation(ScrollbarOrientation::VerticalRight);
             let mut commit_scrollbar_state = ScrollbarState::default()
@@ -755,7 +740,7 @@ fn render_commits(
                         let detail_layout = Layout::default()
                             .direction(Direction::Horizontal)
                             .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
-                            .split(vertical_chunks[1]);
+                            .split(commit_and_detail_chunks[1]);
 
                         let detail_block = Block::default()
                             .title("Details")
@@ -788,12 +773,22 @@ fn render_commits(
         }
     }
 
-    // Footer für Keybindings (add 'u')
-    let footer = Paragraph::new(
-        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | u Nur eigene | q Beenden",
-    )
-    .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
-    f.render_widget(footer, vertical_chunks.last().unwrap().clone());
+    // Footer with border, full width, at the bottom
+    let filter_label = if filter_by_user {
+        "u: Nur eigene"
+    } else {
+        "u: Alle"
+    };
+    let footer_text = format!(
+        "Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | {} | q Beenden",
+        filter_label
+    );
+    let footer_block = Block::default().borders(Borders::ALL);
+    let footer_area = vertical_chunks[1];
+    let footer = Paragraph::new(footer_text)
+        .block(footer_block)
+        .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
+    f.render_widget(footer, footer_area);
 }
 
 // Add this new function to fetch commit details
