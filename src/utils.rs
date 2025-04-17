@@ -24,6 +24,7 @@ pub fn get_commitlist_height() -> Result<usize> {
     Ok(rows.saturating_sub(2 + 1 + 15) as usize) // borders + footer + detail
 }
 
+#[allow(dead_code)]
 pub fn get_commitlist_visible_and_total(commits: &Vec<(PathBuf, Vec<String>)>, selected_repo_index: usize) -> (usize, usize) {
     if selected_repo_index == usize::MAX {
         let total: usize = commits.iter().map(|(_, c)| c.len()).sum();
@@ -34,6 +35,7 @@ pub fn get_commitlist_visible_and_total(commits: &Vec<(PathBuf, Vec<String>)>, s
     }
 }
 
+#[allow(dead_code)]
 pub fn calculate_visible_height(f: &Frame, has_details: bool) -> u16 {
     let total_height = f.area().height;
     if has_details {

@@ -11,15 +11,15 @@ use crate::git::get_commit_details;
 
 pub fn render_commits(
     f: &mut Frame,
-    repos: &Vec<PathBuf>,
+    _repos: &Vec<PathBuf>,
     selected_repo_index: usize,
     data: &Vec<(PathBuf, Vec<String>)>,
     interval_label: &str,
     selected_commit_index: Option<usize>,
     show_details: bool,
     focus: FocusArea,
-    sidebar_scroll: usize,
-    commitlist_scroll: usize,
+    _sidebar_scroll: usize,
+    _commitlist_scroll: usize,
     detail_scroll: u16,
     filter_by_user: bool,
     popup_quote: Option<&Arc<Mutex<PopupQuote>>>,
@@ -220,7 +220,7 @@ pub fn render_commits(
         let popup = arc.lock().unwrap();
         if popup.visible {
             // Popup larger
-            let popup_area = centered_rect(60,80,f.size());
+            let popup_area = centered_rect(60,80,f.area());
             f.render_widget(Clear, popup_area);
             // Dynamic title
             let project = if selected_repo_index==usize::MAX {

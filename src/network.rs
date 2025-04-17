@@ -9,6 +9,7 @@ pub async fn fetch_quote() -> Result<String, reqwest::Error> {
     Ok(format!("{}\n\n— {}", quote, author))
 }
 
+#[allow(dead_code)]
 // Gemini Star Trek quote fetcher
 pub async fn fetch_gemini_startrek_quote() -> Result<String, Box<dyn std::error::Error>> {
     let response = gemini_rs::chat("gemini-2.0-flash")
