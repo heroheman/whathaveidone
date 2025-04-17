@@ -1,11 +1,19 @@
 [package]
-name = "standup"
+name = "whathaveidone"
 version = "0.1.0"
 edition = "2024"
-authors = ["Dein Name <dein@email.com>"]
+authors = ["Florenz Heldermann <moin@flore.nz>"]
 description = "CLI Tool für tägliche Standups mit Git und Ratatui"
 license = "MIT"
-repository = "https://github.com/deinname/standup"
+repository = "https://github.com/heroheman/whathaveidone"
+
+[[bin]]
+name = "whathaveidone"
+path = "src/main.rs"
+
+[[bin]]
+name = "whid"
+path = "src/main.rs"
 
 [dependencies]
 ratatui = { version = "0.28.0", features = ["all-widgets"] }
