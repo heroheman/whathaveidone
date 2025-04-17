@@ -25,7 +25,7 @@ cargo build --release
 
 Or install directly (if published):
 ```
-cargo install --git https://github.com/yourname/standup
+cargo install --git https://github.com/heroheman/whathaveidone
 ```
 
 ## Usage
@@ -35,9 +35,11 @@ or
 `export GEMINI_API_KEY=your-key-here`
 
 2. Run the app in your project directory:
-./target/release/standup
+`whathaveidone` or `whid`
 
 or anywhere above for multiple git repos.
+
+Set a timeframe with `whid today`
 
 3. Use the keyboard to navigate:
 
