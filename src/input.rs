@@ -5,7 +5,7 @@ use crate::models::FocusArea;
 use crate::models::PopupQuote;
 use crate::git::{reload_commits, get_current_git_user, get_commit_details};
 use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, get_commitlist_visible_and_total, calculate_max_detail_scroll};
-use crate::network::fetch_quote;
+use crate::network::{fetch_quote, fetch_gemini_startrek_quote};
 use anyhow::Result;
 
 pub fn handle_key(
@@ -247,6 +247,14 @@ pub fn handle_key(
             let p2 = popup_quote.clone();
             rt.spawn(async move {
                 let quote = fetch_quote().await.unwrap_or_else(|e| format!("Fehler: {}", e));
+                let mut p = p2.lock().unwrap(); p.text=quote; p.loading=false;
+            });
+        }
+        KeyCode::Char('a') => {
+            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Lade Star Trek Zitat...".into(); }
+            let p2 = popup_quote.clone();
+            rt.spawn(async move {
+                let quote = fetch_gemini_startrek_quote().await.unwrap_or_else(|e| format!("Fehler: {}", e));
                 let mut p = p2.lock().unwrap(); p.text=quote; p.loading=false;
             });
         }
