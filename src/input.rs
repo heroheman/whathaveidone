@@ -59,6 +59,22 @@ pub fn handle_key(
         }
         KeyCode::Char(' ') => {
             if *focus == FocusArea::CommitList {
+                // Ensure a commit is selected
+                if selected_commit_index.is_none() {
+                    if *selected_repo_index == usize::MAX {
+                        // global first commit
+                        if let Some((_, commits_list)) = commits.first() {
+                            if !commits_list.is_empty() {
+                                *selected_commit_index = Some(0);
+                            }
+                        }
+                    } else if let Some(repo_commits) = get_active_commits(commits, *selected_repo_index) {
+                        if !repo_commits.is_empty() {
+                            *selected_commit_index = Some(0);
+                        }
+                    }
+                }
+                // Toggle detail view
                 *show_details = !*show_details;
                 if !*show_details { *focus = FocusArea::CommitList; }
             }
@@ -129,6 +145,95 @@ pub fn handle_key(
                     }
                 }
             }
+        }
+        KeyCode::Char('k') => {
+            // vim 'k' as Up arrow
+            match *focus {
+                FocusArea::Sidebar => {
+                    let repo_count = commits.len();
+                    if *selected_repo_index == usize::MAX {
+                        if repo_count>0 { *selected_repo_index = repo_count-1; }
+                    } else if *selected_repo_index >0 { *selected_repo_index -=1; } else { *selected_repo_index = usize::MAX; }
+                    *selected_commit_index = None;
+                    if *selected_repo_index == usize::MAX { *sidebar_scroll = 0; }
+                    else if *selected_repo_index < *sidebar_scroll { *sidebar_scroll = *selected_repo_index; }
+                }
+                FocusArea::CommitList => {
+                    if *selected_repo_index == usize::MAX {
+                        if let Some(idx) = *selected_commit_index {
+                            if idx>0 { *selected_commit_index = Some(idx-1); }
+                        } else {
+                            if commits.iter().map(|(_,c)|c.len()).sum::<usize>()>0 { *selected_commit_index = Some(0); }
+                        }
+                    } else {
+                        if let Some(idx)=*selected_commit_index {
+                            if idx>0 { *selected_commit_index = Some(idx-1); } }
+                        else { *selected_commit_index = Some(0); }
+                    }
+                    *commitlist_scroll = (*selected_commit_index).unwrap_or(0).min(*commitlist_scroll);
+                }
+                FocusArea::Detail => {
+                    if *detail_scroll>0 { *detail_scroll -=1; }
+                }
+            }
+        }
+        KeyCode::Char('j') => {
+            // vim 'j' as Down arrow
+            match *focus {
+                FocusArea::Sidebar => {
+                    let count = commits.len();
+                    if *selected_repo_index==usize::MAX { *selected_repo_index=0; }
+                    else if *selected_repo_index < count-1 { *selected_repo_index+=1; }
+                    else { *selected_repo_index=usize::MAX; }
+                    *selected_commit_index=None;
+                    let height = get_sidebar_height()?;
+                    if *selected_repo_index==usize::MAX { *sidebar_scroll=0; }
+                    else if *selected_repo_index>= *sidebar_scroll+height { *sidebar_scroll = *selected_repo_index+1-height; }
+                }
+                FocusArea::CommitList => {
+                    if *selected_repo_index==usize::MAX {
+                        let total: usize = commits.iter().map(|(_,c)|c.len()).sum();
+                        if total==0 { *selected_commit_index=None; }
+                        else if let Some(idx)=*selected_commit_index {
+                            if idx<total-1 { *selected_commit_index = Some(idx+1);} }
+                        else {*selected_commit_index=Some(0);}    
+                    } else if let Some(repo_commits)= get_active_commits(commits,*selected_repo_index) {
+                        if let Some(idx)=*selected_commit_index {
+                            if idx<repo_commits.len()-1 {*selected_commit_index=Some(idx+1);} }
+                        else {*selected_commit_index=Some(0);}    
+                    }
+                    let height = get_commitlist_height()?;
+                    if let Some(idx)=*selected_commit_index {
+                        if idx>= *commitlist_scroll + height { *commitlist_scroll = idx+1-height; }
+                    }
+                }
+                FocusArea::Detail => {
+                    if let Some(idx)=*selected_commit_index {
+                        let max = calculate_max_detail_scroll(commits,*selected_repo_index,idx)?;
+                        if *detail_scroll<max { *detail_scroll+=1; }
+                    }
+                }
+            }
+        }
+        KeyCode::Char('h') => {
+            // vim 'h' as focus backward
+            *focus = match *focus {
+                FocusArea::Sidebar => {
+                    if *show_details { FocusArea::Detail } else { FocusArea::CommitList }
+                }
+                FocusArea::CommitList => FocusArea::Sidebar,
+                FocusArea::Detail => FocusArea::CommitList,
+            };
+        }
+        KeyCode::Char('l') => {
+            // vim 'l' as focus forward
+            *focus = match *focus {
+                FocusArea::Sidebar => FocusArea::CommitList,
+                FocusArea::CommitList => {
+                    if *show_details { FocusArea::Detail } else { FocusArea::Sidebar }
+                }
+                FocusArea::Detail => FocusArea::Sidebar,
+            };
         }
         KeyCode::Char('u') => {
             *filter_by_user = !*filter_by_user;
