@@ -212,7 +212,7 @@ pub fn render_commits(
 
     // footer
     let filter_label = if filter_by_user {"u: Nur eigene"} else {"u: Alle"};
-    let footer = Paragraph::new(format!("Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | {} | z: Zitat | q Beenden", filter_label))
+    let footer = Paragraph::new(format!("Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | {} | z: Zitat | c: Kopieren | q Beenden", filter_label))
         .block(Block::default().borders(Borders::ALL)).style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks[1]);
 
@@ -220,11 +220,30 @@ pub fn render_commits(
     if let Some(arc) = popup_quote {
         let popup = arc.lock().unwrap();
         if popup.visible {
-            let popup_area = centered_rect(60,20,f.size());
+            // Popup größer machen
+            let popup_area = centered_rect(80,30,f.size());
             f.render_widget(Clear, popup_area);
-            let block = Block::default().title("Zitat des Tages (ESC)").borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black));
+            // Dynamische Überschrift
+            let project = if selected_repo_index==usize::MAX {
+                "Alle Projekte".to_string()
+            } else if let Some((repo,_)) = data.get(selected_repo_index) {
+                repo.file_name().unwrap_or_default().to_string_lossy().to_string()
+            } else {
+                "Projekt".to_string()
+            };
+            let title = format!("Zusammenfassung für {} der letzten {}", project, interval_label);
+            let block = Block::default().title(title).borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black));
             let para = Paragraph::new(popup.text.clone()).block(block).wrap(Wrap{trim:true}).alignment(Alignment::Center).style(Style::default().fg(Color::White));
             f.render_widget(para, popup_area);
+            // Footer unterhalb des Popups
+            let footer_area = Rect {
+                x: popup_area.x,
+                y: popup_area.y + popup_area.height,
+                width: popup_area.width,
+                height: 1,
+            };
+            let footer = Paragraph::new("Drücke c für Zwischenablage").style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
+            f.render_widget(footer, footer_area);
         }
     }
 }

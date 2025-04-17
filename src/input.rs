@@ -1,11 +1,12 @@
 use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf, process::Command};
 use crossterm::event::KeyCode;
 use tokio::runtime::Runtime;
+use arboard::Clipboard;
 use crate::models::FocusArea;
 use crate::models::PopupQuote;
 use crate::git::{reload_commits, get_current_git_user, get_commit_details};
 use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, get_commitlist_visible_and_total, calculate_max_detail_scroll};
-use crate::network::{fetch_quote, fetch_gemini_startrek_quote};
+use crate::network::{fetch_quote, fetch_gemini_startrek_quote, fetch_gemini_commit_summary};
 use anyhow::Result;
 
 pub fn handle_key(
@@ -251,12 +252,36 @@ pub fn handle_key(
             });
         }
         KeyCode::Char('a') => {
-            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Lade Star Trek Zitat...".into(); }
+            // Gather all commit messages as a string
+            let commit_str = if *selected_repo_index == usize::MAX {
+                // All repos: flatten all commit messages
+                commits.iter()
+                    .flat_map(|(_repo, msgs)| msgs)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            } else {
+                // Only selected repo
+                commits.get(*selected_repo_index)
+                    .map(|(_repo, msgs)| msgs.join("\n"))
+                    .unwrap_or_default()
+            };
+            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Lade Commit-Zusammenfassung...".into(); }
             let p2 = popup_quote.clone();
             rt.spawn(async move {
-                let quote = fetch_gemini_startrek_quote().await.unwrap_or_else(|e| format!("Fehler: {}", e));
-                let mut p = p2.lock().unwrap(); p.text=quote; p.loading=false;
+                let summary = fetch_gemini_commit_summary(&commit_str).await.unwrap_or_else(|e| format!("Fehler: {}", e));
+                let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
             });
+        }
+        KeyCode::Char('c') => {
+            // Kopieren, wenn Popup sichtbar
+            let popup = popup_quote.lock().unwrap();
+            if popup.visible && !popup.loading {
+                let mut clipboard = Clipboard::new().ok();
+                if let Some(cb) = clipboard.as_mut() {
+                    let _ = cb.set_text(popup.text.clone());
+                }
+            }
         }
         KeyCode::Esc => { let mut p = popup_quote.lock().unwrap(); p.visible=false; }
         _ => {}

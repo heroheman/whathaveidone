@@ -18,3 +18,4 @@ futures = "0.3.28"
 serde_json = "1.0.140"
 reqwest = { version = "0.12.15", features = ["json"] }
 gemini-rs = "=1.1.0"
+arboard = "3.2"
