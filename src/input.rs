@@ -244,10 +244,10 @@ pub fn handle_key(
         }
         KeyCode::Char('q') => return Ok(false),
         KeyCode::Char('z') => {
-            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Lade Zitat...".into(); }
+            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading quote...".into(); }
             let p2 = popup_quote.clone();
             rt.spawn(async move {
-                let quote = fetch_quote().await.unwrap_or_else(|e| format!("Fehler: {}", e));
+                let quote = fetch_quote().await.unwrap_or_else(|e| format!("Error: {}", e));
                 let mut p = p2.lock().unwrap(); p.text=quote; p.loading=false;
             });
         }
@@ -283,10 +283,10 @@ pub fn handle_key(
                 interval=interval_str,
                 commits=commit_str
             );
-            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Lade Commit-Zusammenfassung...".into(); }
+            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
             let p2 = popup_quote.clone();
             rt.spawn(async move {
-                let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Fehler: {}", e));
+                let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Error: {}", e));
                 let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
             });
         }

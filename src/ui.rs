@@ -55,7 +55,7 @@ pub fn render_commits(
 
     // Sidebar
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo,_)| repo).collect();
-    let mut repo_list = vec![ListItem::new(format!("{} Alle", if selected_repo_index==usize::MAX {"→"}else{" "}))
+    let mut repo_list = vec![ListItem::new(format!("{} All", if selected_repo_index==usize::MAX {"→"}else{" "}))
         .style(if selected_repo_index==usize::MAX {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::White)})];
     repo_list.extend(filtered_repos.iter().enumerate().map(|(i,repo)|{
         let name = repo.file_name().unwrap().to_string_lossy();
@@ -78,11 +78,11 @@ pub fn render_commits(
 
     // Header
     let header = if selected_repo_index==usize::MAX {
-        if filter_by_user { format!("Standup Commits (nur eigene) – {}", interval_label) }
+        if filter_by_user { format!("Standup Commits (only mine) – {}", interval_label) }
         else { format!("Standup Commits – {}", interval_label) }
     } else if let Some((repo,_)) = data.get(selected_repo_index) {
         let name = repo.file_name().unwrap().to_string_lossy();
-        if filter_by_user { format!("{} (nur eigene) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
+        if filter_by_user { format!("{} (only mine) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
     } else { format!("Standup Commits – {}", interval_label) };
 
     // Flatten commits for 'All'
@@ -210,8 +210,8 @@ pub fn render_commits(
     }
 
     // footer
-    let filter_label = if filter_by_user {"u: Nur eigene"} else {"u: Alle"};
-    let footer = Paragraph::new(format!("Tasten: ←/→ Zeitfenster | ↑/↓ Navigation/Scroll | Tab Fokus | Space Details | {} | z: Zitat | c: Kopieren | q Beenden", filter_label))
+    let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
+    let footer = Paragraph::new(format!("Keys: ←/→ Timeframe | ↑/↓ Navigation/Scroll | Tab Focus | Space Details | {} | z: Quote | c: Copy | q Quit", filter_label))
         .block(Block::default().borders(Borders::ALL)).style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks[1]);
 
@@ -219,18 +219,18 @@ pub fn render_commits(
     if let Some(arc) = popup_quote {
         let popup = arc.lock().unwrap();
         if popup.visible {
-            // Popup größer machen
+            // Popup larger
             let popup_area = centered_rect(60,80,f.size());
             f.render_widget(Clear, popup_area);
-            // Dynamische Überschrift
+            // Dynamic title
             let project = if selected_repo_index==usize::MAX {
-                "Alle Projekte".to_string()
+                "All projects".to_string()
             } else if let Some((repo,_)) = data.get(selected_repo_index) {
                 repo.file_name().unwrap_or_default().to_string_lossy().to_string()
             } else {
-                "Projekt".to_string()
+                "Project".to_string()
             };
-            let title = format!("Zusammenfassung für {} der letzten {}", project, interval_label);
+            let title = format!("Summary for {} of the last {}", project, interval_label);
             let block = Block::default().title(title).borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black));
             let para = Paragraph::new(popup.text.clone())
                 .block(block)
@@ -238,14 +238,14 @@ pub fn render_commits(
                 .alignment(Alignment::Left)
                 .style(Style::default().fg(Color::White));
             f.render_widget(para, popup_area);
-            // Footer unterhalb des Popups
+            // Footer below the popup
             let footer_area = Rect {
                 x: popup_area.x,
                 y: popup_area.y + popup_area.height,
                 width: popup_area.width,
                 height: 1,
             };
-            let footer = Paragraph::new("Drücke c für Zwischenablage").style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
+            let footer = Paragraph::new("Press c to copy to clipboard").style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
             f.render_widget(footer, footer_area);
         }
     }
