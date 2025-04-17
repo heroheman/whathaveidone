@@ -19,25 +19,8 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 
 ### Build & Install
 
-Clone and build the app:
+- `cargo install whathaveidone`
 
-```sh
-git clone https://github.com/yourname/whathaveidone
-cd whathaveidone/standup
-cargo build --release
-```
-
-Or install directly (if published):
-
-```sh
-cargo install --git https://github.com/yourname/whathaveidone
-```
-
-... this is all wrong :D
-```sh
-cargo build --release
-ln -s /<absolute path>/target/release/standup /usr/local/bin/standup
-```
 
 ## Usage
 
@@ -46,12 +29,7 @@ ln -s /<absolute path>/target/release/standup /usr/local/bin/standup
    export GEMINI_API_KEY=your-key-here
    ```
 
-2. Run the app in your project directory:
-   ```sh
-   ./target/release/whathaveidone
-   # or
-   ./target/release/whid
-   ```
+2. Run the app in your commandline with `whathaveidone` or just `whid`. It will look relative from the folder you started the app. 
 
 3. Use the keyboard to navigate:
    - Arrow keys: Move between projects/commits
