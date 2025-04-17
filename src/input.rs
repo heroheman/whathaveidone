@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf, process::Command};
+use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf, process::Command, fs};
 use crossterm::event::KeyCode;
 use tokio::runtime::Runtime;
 use arboard::Clipboard;
@@ -252,24 +252,41 @@ pub fn handle_key(
             });
         }
         KeyCode::Char('a') => {
-            // Gather all commit messages as a string
-            let commit_str = if *selected_repo_index == usize::MAX {
-                // All repos: flatten all commit messages
-                commits.iter()
-                    .flat_map(|(_repo, msgs)| msgs)
-                    .cloned()
+            // Prompt-Template aus Datei laden
+            let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
+            // Projektname und Zeitfenster bestimmen
+            let (project_name, commit_str) = if *selected_repo_index == usize::MAX {
+                let all_commits = commits.iter()
+                    .flat_map(|(repo, msgs)| {
+                        let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
+                        msgs.iter().map(move |msg| format!("[{}] {}", repo_name, msg))
+                    })
                     .collect::<Vec<_>>()
-                    .join("\n")
+                    .join("\n");
+                ("Alle Projekte".to_string(), all_commits)
             } else {
-                // Only selected repo
-                commits.get(*selected_repo_index)
+                let project = commits.get(*selected_repo_index)
+                    .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
+                    .unwrap_or_else(|| "Projekt".to_string());
+                let commitlist = commits.get(*selected_repo_index)
                     .map(|(_repo, msgs)| msgs.join("\n"))
-                    .unwrap_or_default()
+                    .unwrap_or_default();
+                (project, commitlist)
             };
+            // Zeitfenster als String
+            let interval_str = intervals[*current_index].0;
+            // Prompt bauen
+            let prompt = format!(
+                "{template}\n\nProjekt: {project}\nZeitraum: {interval}\nCommits:\n{commits}",
+                template=prompt_template,
+                project=project_name,
+                interval=interval_str,
+                commits=commit_str
+            );
             { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Lade Commit-Zusammenfassung...".into(); }
             let p2 = popup_quote.clone();
             rt.spawn(async move {
-                let summary = fetch_gemini_commit_summary(&commit_str).await.unwrap_or_else(|e| format!("Fehler: {}", e));
+                let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Fehler: {}", e));
                 let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
             });
         }
