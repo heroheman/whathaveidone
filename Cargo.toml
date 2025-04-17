@@ -6,6 +6,7 @@ authors = ["Your Name <your@email.com>"]
 description = "CLI tool for daily standups with Git and Ratatui"
 license = "MIT"
 repository = "https://github.com/heroheman/whathaveidone"
+readme = "readme.md"
 
 [[bin]]
 name = "whathaveidone"

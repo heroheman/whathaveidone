@@ -33,6 +33,12 @@ Or install directly (if published):
 cargo install --git https://github.com/yourname/whathaveidone
 ```
 
+... this is all wrong :D
+```sh
+cargo build --release
+ln -s /<absolute path>/target/release/standup /usr/local/bin/standup
+```
+
 ## Usage
 
 1. Set your Gemini API key:
