@@ -182,6 +182,10 @@ pub fn render_commits(
                 };
                 // clear inner region too
                 f.render_widget(Clear, padded);
+                // fill padded area with spaces to erase any leftover text
+                let blank_lines = vec![" ".repeat(padded.width as usize); padded.height as usize].join("\n");
+                let blank_para = Paragraph::new(blank_lines.clone());
+                f.render_widget(blank_para, padded);
                 // split into text + scrollbar
                 let detail_chunks = Layout::default()
                     .direction(Direction::Horizontal)
@@ -189,7 +193,7 @@ pub fn render_commits(
                     .split(padded);
                 // render detail text
                 let para = Paragraph::new(details.clone())
-                    .wrap(Wrap { trim: true })
+                    .wrap(Wrap { trim: false })
                     .scroll((detail_scroll, 0));
                 f.render_widget(para, detail_chunks[0]);
                 // render scrollbar
