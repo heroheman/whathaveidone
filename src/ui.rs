@@ -221,7 +221,7 @@ pub fn render_commits(
         let popup = arc.lock().unwrap();
         if popup.visible {
             // Popup größer machen
-            let popup_area = centered_rect(80,30,f.size());
+            let popup_area = centered_rect(60,80,f.size());
             f.render_widget(Clear, popup_area);
             // Dynamische Überschrift
             let project = if selected_repo_index==usize::MAX {
@@ -233,7 +233,11 @@ pub fn render_commits(
             };
             let title = format!("Zusammenfassung für {} der letzten {}", project, interval_label);
             let block = Block::default().title(title).borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black));
-            let para = Paragraph::new(popup.text.clone()).block(block).wrap(Wrap{trim:true}).alignment(Alignment::Center).style(Style::default().fg(Color::White));
+            let para = Paragraph::new(popup.text.clone())
+                .block(block)
+                .wrap(Wrap{trim:true})
+                .alignment(Alignment::Left)
+                .style(Style::default().fg(Color::White));
             f.render_widget(para, popup_area);
             // Footer unterhalb des Popups
             let footer_area = Rect {
