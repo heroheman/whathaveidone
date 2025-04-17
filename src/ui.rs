@@ -6,7 +6,6 @@ use ratatui::{
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::rc::Rc;
 use crate::models::{FocusArea, PopupQuote};
 use crate::git::get_commit_details;
 
@@ -20,7 +19,7 @@ pub fn render_commits(
     show_details: bool,
     focus: FocusArea,
     sidebar_scroll: usize,
-    mut commitlist_scroll: usize,
+    commitlist_scroll: usize,
     detail_scroll: u16,
     filter_by_user: bool,
     popup_quote: Option<&Arc<Mutex<PopupQuote>>>,

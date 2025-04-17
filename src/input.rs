@@ -1,12 +1,12 @@
-use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf, process::Command, fs};
+use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf, fs};
 use crossterm::event::KeyCode;
 use tokio::runtime::Runtime;
 use arboard::Clipboard;
 use crate::models::FocusArea;
 use crate::models::PopupQuote;
-use crate::git::{reload_commits, get_current_git_user, get_commit_details};
-use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, get_commitlist_visible_and_total, calculate_max_detail_scroll};
-use crate::network::{fetch_quote, fetch_gemini_startrek_quote, fetch_gemini_commit_summary};
+use crate::git::reload_commits;
+use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, calculate_max_detail_scroll};
+use crate::network::{fetch_quote, fetch_gemini_commit_summary};
 use anyhow::Result;
 
 pub fn handle_key(

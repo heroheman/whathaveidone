@@ -9,13 +9,11 @@ mod input;
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event, KeyCode}};
-use ratatui::{prelude::*, widgets::*};
+use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event}};
+use ratatui::prelude::*;
 use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
-use network::fetch_quote;
 use ui::render_commits;
-use utils::{get_active_commits, get_sidebar_height, get_commitlist_height, get_commitlist_visible_and_total, calculate_max_detail_scroll};
 use crate::input::handle_key;
 
 fn main() -> anyhow::Result<()> {
