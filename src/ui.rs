@@ -211,8 +211,12 @@ pub fn render_commits(
 
     // footer
     let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
-    let footer = Paragraph::new(format!("Keys: ←/→ Timeframe | ↑/↓ Navigation/Scroll | Tab Focus | Space Details | {} | z: Quote | c: Copy | q Quit", filter_label))
-        .block(Block::default().borders(Borders::ALL)).style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
+    let footer = Paragraph::new(format!(
+        "Keys: Tab/Shift+Tab Timeframe | ↑/↓/j/k Navigation/Scroll | h/l Focus | Space Details | {} | z: Quote | c: Copy | q Quit",
+        filter_label
+    ))
+    .block(Block::default().borders(Borders::ALL))
+    .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks[1]);
 
     // popup

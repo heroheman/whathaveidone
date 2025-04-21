@@ -58,41 +58,28 @@ pub fn handle_key(
             *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
             *selected_commit_index = None;
         },
-        KeyCode::Left => {
-            if (*current_index > 0) {
-                *current_index -= 1;
-                *current_interval = intervals[*current_index].1;
-                *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
-                *selected_commit_index = None;
-            }
-        },
-        KeyCode::Right => {
-            if (*current_index < intervals.len() - 1) {
-                *current_index += 1;
-                *current_interval = intervals[*current_index].1;
-                *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
-                *selected_commit_index = None;
-            }
-        },
         KeyCode::Tab => {
-            *focus = match *focus {
-                FocusArea::Sidebar => {
-                    if selected_commit_index.is_none() {
-                        if *selected_repo_index == usize::MAX {
-                            let total: usize = commits.iter().map(|(_,c)|c.len()).sum();
-                            if total > 0 { *selected_commit_index = Some(0); }
-                        } else if let Some(repo_commits) = get_active_commits(commits, *selected_repo_index) {
-                            if !repo_commits.is_empty() { *selected_commit_index = Some(0); }
-                        }
-                    }
-                    FocusArea::CommitList
-                }
-                FocusArea::CommitList => {
-                    if *show_details { FocusArea::Detail } else { FocusArea::Sidebar }
-                }
-                FocusArea::Detail => FocusArea::Sidebar,
-            };
-        }
+            // Tab cycles forward through timeframes
+            if *current_index < intervals.len() - 1 {
+                *current_index += 1;
+            } else {
+                *current_index = 0;
+            }
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
+        KeyCode::BackTab => {
+            // Shift+Tab cycles backward through timeframes
+            if *current_index > 0 {
+                *current_index -= 1;
+            } else {
+                *current_index = intervals.len() - 1;
+            }
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
         KeyCode::Char(' ') => {
             if *focus == FocusArea::CommitList {
                 // Ensure a commit is selected
