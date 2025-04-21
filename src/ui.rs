@@ -3,6 +3,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear},
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
+    text::{Span, Line},
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -96,8 +97,34 @@ pub fn render_commits(
                 let idx=offset+i;
                 let sel = Some(idx)==selected_commit_index;
                 let indicator = if sel {"→"} else {"  "};
+                // Syntax highlighting: hash, ticket, author
+                let mut spans = vec![];
+                let mut parts = commit.split_whitespace();
+                if let Some(hash) = parts.next() {
+                    spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+                }
+                if let Some(second) = parts.next() {
+                    // e.g. author or time
+                    spans.push(Span::raw(format!(" {}", second)));
+                }
+                let rest: String = parts.collect::<Vec<_>>().join(" ");
+                // Highlight ticket numbers (e.g. ABC-1234)
+                let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
+                let mut last = 0;
+                for m in ticket_re.find_iter(&rest) {
+                    if m.start() > last {
+                        spans.push(Span::raw(rest[last..m.start()].to_string()));
+                    }
+                    spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                    last = m.end();
+                }
+                if last < rest.len() {
+                    spans.push(Span::raw(rest[last..].to_string()));
+                }
                 let style = if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
-                items.push(ListItem::new(format!("{} {}", indicator, commit)).style(style));
+                let mut content = vec![Span::raw(indicator), Span::raw(" ")];
+                content.extend(spans);
+                items.push(ListItem::new(Line::from(content)).style(style));
             }
             offset+=commits.len();
         }
@@ -116,8 +143,35 @@ pub fn render_commits(
             let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
                 let sel=Some(i)==selected_commit_index;
                 let indicator=if sel{"→"} else {"  "};
+                // Syntax highlighting: hash, ticket, author
+                let mut spans = vec![];
+                let mut parts = commit.split_whitespace();
+                if let Some(hash) = parts.next() {
+                    spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+                }
+                if let Some(second) = parts.next() {
+                    spans.push(Span::raw(format!(" {}", second)));
+                }
+                let rest: String = parts.collect::<Vec<_>>().join(" ");
+                let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
+                let mut last = 0;
+                for m in ticket_re.find_iter(&rest) {
+                    if m.start() > last {
+                        spans.push(Span::raw(rest[last..m.start()].to_string()));
+                    }
+                    spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                    last = m.end();
+                }
+                if last < rest.len() {
+                    spans.push(Span::raw(rest[last..].to_string()));
+                }
                 let style=if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
-                ListItem::new(format!("{} {}", indicator, commit)).style(style)
+                ListItem::new(Line::from({
+                    let mut content = vec![Span::raw(indicator), Span::raw(" ")];
+                    content.extend(spans);
+                    content
+                }))
+                .style(style)
             }).collect();
             let mut state=ListState::default(); state.select(selected_commit_index);
             let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
