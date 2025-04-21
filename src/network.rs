@@ -1,6 +1,7 @@
 use reqwest;
 use serde_json;
 
+#[allow(dead_code)]
 pub async fn fetch_quote() -> Result<String, reqwest::Error> {
     let resp = reqwest::get("https://dummyjson.com/quotes/random").await?;
     let json: serde_json::Value = resp.json().await?;

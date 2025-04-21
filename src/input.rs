@@ -6,7 +6,7 @@ use crate::models::FocusArea;
 use crate::models::PopupQuote;
 use crate::git::reload_commits;
 use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, calculate_max_detail_scroll};
-use crate::network::{fetch_quote, fetch_gemini_commit_summary};
+use crate::network::fetch_gemini_commit_summary;
 use anyhow::Result;
 
 pub fn handle_key(
@@ -265,14 +265,6 @@ pub fn handle_key(
             *detail_scroll=0;
         }
         KeyCode::Char('q') => return Ok(false),
-        KeyCode::Char('z') => {
-            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading quote...".into(); }
-            let p2 = popup_quote.clone();
-            rt.spawn(async move {
-                let quote = fetch_quote().await.unwrap_or_else(|e| format!("Error: {}", e));
-                let mut p = p2.lock().unwrap(); p.text=quote; p.loading=false;
-            });
-        }
         KeyCode::Char('a') => {
             // Prompt-Template aus Datei laden
             let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();

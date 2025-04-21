@@ -266,7 +266,7 @@ pub fn render_commits(
     // footer
     let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
     let footer = Paragraph::new(format!(
-        "Keys: Tab/Shift+Tab Timeframe | ↑/↓/j/k Navigation/Scroll | h/l Focus | Space Details | {} | z: Quote | c: Copy | q Quit",
+        "Keys: Tab/Shift+Tab Timeframe | ↑/↓/j/k Navigation/Scroll | h/l Focus | Space Details | {} | c: Copy | q Quit",
         filter_label
     ))
     .block(Block::default().borders(Borders::ALL))
