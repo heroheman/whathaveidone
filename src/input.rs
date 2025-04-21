@@ -8,6 +8,7 @@ use crate::git::reload_commits;
 use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, calculate_max_detail_scroll};
 use crate::network::fetch_gemini_commit_summary;
 use anyhow::Result;
+use crate::models::SelectedCommits;
 
 pub fn handle_key(
     key: KeyCode,
@@ -25,6 +26,7 @@ pub fn handle_key(
     commitlist_scroll: &mut usize,
     detail_scroll: &mut u16,
     popup_quote: &Arc<Mutex<PopupQuote>>,
+    selected_commits: &Arc<Mutex<SelectedCommits>>,
     rt: &Runtime,
 ) -> Result<bool> {
     match key {
@@ -53,10 +55,38 @@ pub fn handle_key(
             *selected_commit_index = None;
         },
         KeyCode::Char('m') => {
-            *current_index = 4;
-            *current_interval = intervals[*current_index].1;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
-            *selected_commit_index = None;
+            // Toggle selection of current commit
+            let mut sel = selected_commits.lock().unwrap();
+            if let Some(idx) = *selected_commit_index {
+                let commit_str = if *selected_repo_index == usize::MAX {
+                    // global index
+                    let mut offset = 0;
+                    let mut found = None;
+                    for (_repo, repo_commits) in commits.iter() {
+                        if idx < offset + repo_commits.len() {
+                            found = repo_commits.get(idx - offset).cloned();
+                            break;
+                        }
+                        offset += repo_commits.len();
+                    }
+                    found
+                } else {
+                    commits.get(*selected_repo_index)
+                        .and_then(|(_repo, repo_commits)| repo_commits.get(idx).cloned())
+                };
+                if let Some(commit) = commit_str {
+                    let hash = commit.split_whitespace().next().unwrap_or("").to_string();
+                    if sel.set.contains(&hash) {
+                        sel.set.remove(&hash);
+                    } else {
+                        sel.set.insert(hash);
+                    }
+                }
+            }
+        },
+        KeyCode::Char('s') => {
+            let mut sel = selected_commits.lock().unwrap();
+            sel.popup_visible = true;
         },
         KeyCode::Tab => {
             // Tab cycles forward through timeframes
@@ -291,7 +321,7 @@ pub fn handle_key(
             let interval_str = intervals[*current_index].0;
             // Prompt bauen
             let prompt = format!(
-                "{template}\n\nProjekt: {project}\nZeitraum: {interval}\nCommits:\n{commits}",
+                "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
                 template=prompt_template,
                 project=project_name,
                 interval=interval_str,
@@ -304,6 +334,54 @@ pub fn handle_key(
                 let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
             });
         }
+        KeyCode::Char('A') => {
+            // Send only marked commits to Gemini
+            let sel = selected_commits.lock().unwrap();
+            if sel.set.is_empty() {
+                let mut p = popup_quote.lock().unwrap();
+                p.visible = true;
+                p.loading = false;
+                p.text = "No commits marked.".to_string();
+            } else {
+                // Build hash -> commit line map
+                let mut hash_to_commit = std::collections::HashMap::new();
+                for (_repo, commits) in commits.iter() {
+                    for commit in commits {
+                        if let Some(hash) = commit.split_whitespace().next() {
+                            hash_to_commit.insert(hash, commit);
+                        }
+                    }
+                }
+                // Collect full commit lines for selected hashes
+                let commit_lines: Vec<String> = sel.set.iter()
+                    .filter_map(|hash| hash_to_commit.get(hash.as_str()).map(|s| s.to_string()))
+                    .collect();
+                let commit_str = commit_lines.join("\n");
+                // Use current project name and interval
+                let project_name = if *selected_repo_index == usize::MAX {
+                    "All projects".to_string()
+                } else {
+                    commits.get(*selected_repo_index)
+                        .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
+                        .unwrap_or_else(|| "Project".to_string())
+                };
+                let interval_str = intervals[*current_index].0;
+                let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
+                let prompt = format!(
+                    "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
+                    template=prompt_template,
+                    project=project_name,
+                    interval=interval_str,
+                    commits=commit_str
+                );
+                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
+                let p2 = popup_quote.clone();
+                rt.spawn(async move {
+                    let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Error: {}", e));
+                    let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
+                });
+            }
+        }
         KeyCode::Char('c') => {
             // Kopieren, wenn Popup sichtbar
             let popup = popup_quote.lock().unwrap();
@@ -314,7 +392,10 @@ pub fn handle_key(
                 }
             }
         }
-        KeyCode::Esc => { let mut p = popup_quote.lock().unwrap(); p.visible=false; }
+        KeyCode::Esc => { 
+            let mut p = popup_quote.lock().unwrap(); p.visible=false; 
+            let mut sel = selected_commits.lock().unwrap(); sel.popup_visible = false;
+        }
         _ => {}
     }
     *current_interval = intervals[*current_index].1;

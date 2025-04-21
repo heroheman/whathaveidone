@@ -15,6 +15,8 @@ use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
 use ui::render_commits;
 use crate::input::handle_key;
+use crate::models::SelectedCommits;
+use std::collections::HashSet;
 
 fn main() -> anyhow::Result<()> {
     let initial_interval = parse_args();
@@ -42,6 +44,7 @@ fn main() -> anyhow::Result<()> {
     let mut detail_scroll = 0;
 
     let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false }));
+    let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: HashSet::new(), popup_visible: false }));
 
     let rt = Runtime::new()?;
     terminal::enable_raw_mode()?;
@@ -65,6 +68,7 @@ fn main() -> anyhow::Result<()> {
                 detail_scroll,
                 filter_by_user,
                 Some(&popup_quote),
+                Some(&selected_commits),
             );
         })?;
 
@@ -86,6 +90,7 @@ fn main() -> anyhow::Result<()> {
                     &mut commitlist_scroll,
                     &mut detail_scroll,
                     &popup_quote,
+                    &selected_commits,
                     &rt,
                 )? {
                     break;

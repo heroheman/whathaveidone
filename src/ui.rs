@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use crate::models::{FocusArea, PopupQuote};
 use crate::git::get_commit_details;
+use crate::models::SelectedCommits;
 
 pub fn render_commits(
     f: &mut Frame,
@@ -24,7 +25,9 @@ pub fn render_commits(
     detail_scroll: u16,
     filter_by_user: bool,
     popup_quote: Option<&Arc<Mutex<PopupQuote>>>,
+    selected_commits: Option<&Arc<Mutex<SelectedCommits>>>,
 ) {
+    let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
     let area = f.area();
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -96,7 +99,8 @@ pub fn render_commits(
             for (i,commit) in commits.iter().enumerate() {
                 let idx=offset+i;
                 let sel = Some(idx)==selected_commit_index;
-                let indicator = if sel {"→"} else {"  "};
+                let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                 // Syntax highlighting: hash, ticket, author
                 let mut spans = vec![];
                 let mut parts = commit.split_whitespace();
@@ -142,7 +146,8 @@ pub fn render_commits(
         if let Some((_, commits)) = data.get(selected_repo_index) {
             let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
                 let sel=Some(i)==selected_commit_index;
-                let indicator=if sel{"→"} else {"  "};
+                let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                 // Syntax highlighting: hash, ticket, author
                 let mut spans = vec![];
                 let mut parts = commit.split_whitespace();
@@ -261,12 +266,12 @@ pub fn render_commits(
                 );
             }
         }
-    }
+    } 
 
     // footer
     let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
     let footer = Paragraph::new(format!(
-        "Keys: Tab/Shift+Tab Timeframe | ↑/↓/j/k Navigation/Scroll | h/l Focus | Space Details | {} | c: Copy | q Quit",
+        "Tab/Shift+Tab Timeframe | ↑/↓/ or h/j/k/l Navigation | <Space> Details | m Mark | s Show Marked | a AI summary | A AI summary (marked) | {} | Q Quit",
         filter_label
     ))
     .block(Block::default().borders(Borders::ALL))
@@ -305,6 +310,37 @@ pub fn render_commits(
             };
             let footer = Paragraph::new("Press c to copy to clipboard").style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
             f.render_widget(footer, footer_area);
+        }
+    }
+
+    if let Some(selected_commits) = selected_commits {
+        let sel = selected_commits.lock().unwrap();
+        if sel.popup_visible {
+            let popup_area = centered_rect(60, 40, f.area());
+            f.render_widget(Clear, popup_area);
+            let mut lines = vec![Line::from("Selected Commits:")];
+            // Build a map of hash -> full commit line for lookup
+            let mut hash_to_commit = std::collections::HashMap::new();
+            for (_repo, commits) in data {
+                for commit in commits {
+                    if let Some(hash) = commit.split_whitespace().next() {
+                        hash_to_commit.insert(hash, commit);
+                    }
+                }
+            }
+            for hash in &sel.set {
+                if let Some(commit_line) = hash_to_commit.get(hash.as_str()) {
+                    lines.push(Line::from((*commit_line).to_string()));
+                } else {
+                    lines.push(Line::from(hash.clone()));
+                }
+            }
+            let para = Paragraph::new(lines)
+                .block(Block::default().title("Selected Commits").borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black)))
+                .wrap(Wrap{trim:true})
+                .alignment(Alignment::Left)
+                .style(Style::default().fg(Color::White));
+            f.render_widget(para, popup_area);
         }
     }
 }

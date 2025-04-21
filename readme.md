@@ -9,6 +9,7 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 - Supports multiple repositories
 - Customizable summary prompt (see `prompt.txt`)
 - Copy summary to clipboard with one keypress
+- **Mark commits with m, view all marked with S**
 
 ## Installation
 
@@ -35,6 +36,8 @@ A terminal tool to summarize your Git commit history for daily standups, using A
    - Arrow keys: Move between projects/commits
    - `a`: Show AI summary popup
    - `c`: Copy summary to clipboard
+   - `m`: Mark/unmark commit
+   - `S`: Show popup with all marked commits
    - `q`: Quit
 
 ## Customizing the AI Prompt

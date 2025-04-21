@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum FocusArea {
     Sidebar,
@@ -9,4 +11,9 @@ pub struct PopupQuote {
     pub visible: bool,
     pub text: String,
     pub loading: bool,
+}
+
+pub struct SelectedCommits {
+    pub set: HashSet<String>,
+    pub popup_visible: bool,
 }
