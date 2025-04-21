@@ -28,17 +28,52 @@ pub fn handle_key(
     rt: &Runtime,
 ) -> Result<bool> {
     match key {
-        KeyCode::Char('1') => *current_index = 0,
-        KeyCode::Char('2') => *current_index = 1,
-        KeyCode::Char('3') => *current_index = 2,
-        KeyCode::Char('w') => *current_index = 3,
-        KeyCode::Char('m') => *current_index = 4,
+        KeyCode::Char('1') => {
+            *current_index = 0;
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
+        KeyCode::Char('2') => {
+            *current_index = 1;
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
+        KeyCode::Char('3') => {
+            *current_index = 2;
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
+        KeyCode::Char('w') => {
+            *current_index = 3;
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
+        KeyCode::Char('m') => {
+            *current_index = 4;
+            *current_interval = intervals[*current_index].1;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+            *selected_commit_index = None;
+        },
         KeyCode::Left => {
-            if *current_index > 0 { *current_index -= 1; }
-        }
+            if (*current_index > 0) {
+                *current_index -= 1;
+                *current_interval = intervals[*current_index].1;
+                *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+                *selected_commit_index = None;
+            }
+        },
         KeyCode::Right => {
-            if *current_index < intervals.len() - 1 { *current_index += 1; }
-        }
+            if (*current_index < intervals.len() - 1) {
+                *current_index += 1;
+                *current_interval = intervals[*current_index].1;
+                *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
+                *selected_commit_index = None;
+            }
+        },
         KeyCode::Tab => {
             *focus = match *focus {
                 FocusArea::Sidebar => {
