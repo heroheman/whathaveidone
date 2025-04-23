@@ -3,7 +3,10 @@ use anyhow::Result;
 use ratatui::prelude::Frame;
 use crate::git::get_commit_details;
 
-pub fn get_active_commits<'a>(commits: &'a Vec<(PathBuf, Vec<String>)>, selected_repo_index: usize) -> Option<&'a Vec<String>> {
+// Type alias for commit data for clarity
+pub type CommitData = Vec<(PathBuf, Vec<String>)>;
+
+pub fn get_active_commits<'a>(commits: &'a CommitData, selected_repo_index: usize) -> Option<&'a Vec<String>> {
     if selected_repo_index == usize::MAX {
         None
     } else {
@@ -25,7 +28,7 @@ pub fn get_commitlist_height() -> Result<usize> {
 }
 
 #[allow(dead_code)]
-pub fn get_commitlist_visible_and_total(commits: &Vec<(PathBuf, Vec<String>)>, selected_repo_index: usize) -> (usize, usize) {
+pub fn get_commitlist_visible_and_total(commits: &CommitData, selected_repo_index: usize) -> (usize, usize) {
     if selected_repo_index == usize::MAX {
         let total: usize = commits.iter().map(|(_, c)| c.len()).sum();
         (0, total)
@@ -37,16 +40,18 @@ pub fn get_commitlist_visible_and_total(commits: &Vec<(PathBuf, Vec<String>)>, s
 
 #[allow(dead_code)]
 pub fn calculate_visible_height(f: &Frame, has_details: bool) -> u16 {
+    const FOOTER_HEIGHT: u16 = 1;
+    const DETAIL_HEIGHT: u16 = 15;
     let total_height = f.area().height;
     if has_details {
-        total_height.saturating_sub(2 + 1 + 15)
+        total_height.saturating_sub(2 + FOOTER_HEIGHT + DETAIL_HEIGHT)
     } else {
-        total_height.saturating_sub(2 + 1)
+        total_height.saturating_sub(2 + FOOTER_HEIGHT)
     }
 }
 
 pub fn calculate_max_detail_scroll(
-    commits: &Vec<(PathBuf, Vec<String>)>,
+    commits: &CommitData,
     selected_repo_index: usize,
     commit_index: usize,
 ) -> Result<u16> {

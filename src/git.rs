@@ -61,7 +61,9 @@ pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bo
     Ok(stdout.lines().map(|s| s.to_string()).collect())
 }
 
-pub fn reload_commits(repos: &Vec<PathBuf>, duration: Duration, filter_by_user: bool) -> Result<Vec<(PathBuf, Vec<String>)>> {
+pub type CommitData = Vec<(PathBuf, Vec<String>)>;
+
+pub fn reload_commits(repos: &Vec<PathBuf>, duration: Duration, filter_by_user: bool) -> Result<CommitData> {
     let mut commits = vec![];
     for repo in repos {
         let repo_commits = get_recent_commits(repo, duration, filter_by_user)?;

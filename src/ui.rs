@@ -12,12 +12,48 @@ use crate::models::{FocusArea, PopupQuote};
 use crate::git::get_commit_details;
 use crate::models::SelectedCommits;
 use crate::CommitTab;
+use once_cell::sync::Lazy;
+use regex::Regex;
 
+// Type alias for commit data for clarity
+pub type CommitData = Vec<(PathBuf, Vec<String>)>;
+
+// Compile the ticket regex once for all uses
+static TICKET_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Z]+-\d+").unwrap());
+
+/// Renders a commit line with syntax highlighting and ticket detection.
+fn render_commit_line(commit: &str, indicator: String, _selected: bool) -> Line<'static> {
+    let mut spans = vec![];
+    let mut parts = commit.split_whitespace();
+    if let Some(hash) = parts.next() {
+        spans.push(Span::styled(hash.to_owned(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+    }
+    if let Some(second) = parts.next() {
+        spans.push(Span::raw(format!(" {}", second)));
+    }
+    let rest: String = parts.collect::<Vec<_>>().join(" ");
+    let mut last = 0;
+    for m in TICKET_REGEX.find_iter(&rest) {
+        if m.start() > last {
+            spans.push(Span::raw(rest[last..m.start()].to_owned()));
+        }
+        spans.push(Span::styled(rest[m.start()..m.end()].to_owned(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+        last = m.end();
+    }
+    if last < rest.len() {
+        spans.push(Span::raw(rest[last..].to_owned()));
+    }
+    let mut content = vec![Span::raw(indicator), Span::raw(" ")];
+    content.extend(spans);
+    Line::from(content)
+}
+
+/// Renders the commits view.
 pub fn render_commits(
     f: &mut Frame,
     _repos: &Vec<PathBuf>,
     selected_repo_index: usize,
-    data: &Vec<(PathBuf, Vec<String>)>,
+    data: &CommitData,
     interval_label: &str,
     selected_commit_index: Option<usize>,
     show_details: bool,
@@ -140,34 +176,9 @@ pub fn render_commits(
                         let sel = Some(idx)==selected_commit_index;
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        // Syntax highlighting: hash, ticket, author
-                        let mut spans = vec![];
-                        let mut parts = commit.split_whitespace();
-                        if let Some(hash) = parts.next() {
-                            spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
-                        }
-                        if let Some(second) = parts.next() {
-                            // e.g. author or time
-                            spans.push(Span::raw(format!(" {}", second)));
-                        }
-                        let rest: String = parts.collect::<Vec<_>>().join(" ");
-                        // Highlight ticket numbers (e.g. ABC-1234)
-                        let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
-                        let mut last = 0;
-                        for m in ticket_re.find_iter(&rest) {
-                            if m.start() > last {
-                                spans.push(Span::raw(rest[last..m.start()].to_string()));
-                            }
-                            spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-                            last = m.end();
-                        }
-                        if last < rest.len() {
-                            spans.push(Span::raw(rest[last..].to_string()));
-                        }
                         let style = if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
-                        let mut content = vec![Span::raw(indicator), Span::raw(" ")];
-                        content.extend(spans);
-                        items.push(ListItem::new(Line::from(content)).style(style));
+                        let line = render_commit_line(commit, indicator, sel);
+                        items.push(ListItem::new(line).style(style));
                     }
                     offset+=commits.len();
                 }
@@ -187,35 +198,9 @@ pub fn render_commits(
                         let sel=Some(i)==selected_commit_index;
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        // Syntax highlighting: hash, ticket, author
-                        let mut spans = vec![];
-                        let mut parts = commit.split_whitespace();
-                        if let Some(hash) = parts.next() {
-                            spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
-                        }
-                        if let Some(second) = parts.next() {
-                            spans.push(Span::raw(format!(" {}", second)));
-                        }
-                        let rest: String = parts.collect::<Vec<_>>().join(" ");
-                        let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
-                        let mut last = 0;
-                        for m in ticket_re.find_iter(&rest) {
-                            if m.start() > last {
-                                spans.push(Span::raw(rest[last..m.start()].to_string()));
-                            }
-                            spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-                            last = m.end();
-                        }
-                        if last < rest.len() {
-                            spans.push(Span::raw(rest[last..].to_string()));
-                        }
                         let style=if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
-                        ListItem::new(Line::from({
-                            let mut content = vec![Span::raw(indicator), Span::raw(" ")];
-                            content.extend(spans);
-                            content
-                        }))
-                        .style(style)
+                        let line = render_commit_line(commit, indicator, sel);
+                        ListItem::new(line).style(style)
                     }).collect();
                     let mut state=ListState::default(); state.select(selected_commit_index);
                     let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
@@ -257,35 +242,12 @@ pub fn render_commits(
                     for (repo, commits) in repo_to_commits.iter() {
                         items.push(ListItem::new(format!("### {}", repo.file_name().unwrap().to_string_lossy()))
                             .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
-                        for (i, commit) in commits.iter().enumerate() {
+                        for commit in commits.iter() {
                             let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
                             let indicator = format!("{}  ", star);
-                            // Syntax highlighting: hash, ticket, author
-                            let mut spans = vec![];
-                            let mut parts = commit.split_whitespace();
-                            if let Some(hash) = parts.next() {
-                                spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
-                            }
-                            if let Some(second) = parts.next() {
-                                spans.push(Span::raw(format!(" {}", second)));
-                            }
-                            let rest: String = parts.collect::<Vec<_>>().join(" ");
-                            let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
-                            let mut last = 0;
-                            for m in ticket_re.find_iter(&rest) {
-                                if m.start() > last {
-                                    spans.push(Span::raw(rest[last..m.start()].to_string()));
-                                }
-                                spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-                                last = m.end();
-                            }
-                            if last < rest.len() {
-                                spans.push(Span::raw(rest[last..].to_string()));
-                            }
                             let style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
-                            let mut content = vec![Span::raw(indicator), Span::raw(" ")];
-                            content.extend(spans);
-                            items.push(ListItem::new(Line::from(content)).style(style));
+                            let line = render_commit_line(commit, indicator, true);
+                            items.push(ListItem::new(line).style(style));
                         }
                     }
                     let mut state = ListState::default(); state.select(selected_commit_index);
@@ -451,6 +413,7 @@ pub fn render_commits(
     }
 }
 
+/// Centers a rectangle within another rectangle.
 pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
     let vertical = Layout::default().direction(Direction::Vertical)
         .constraints([Constraint::Percentage((100-percent_y)/2), Constraint::Percentage(percent_y), Constraint::Percentage((100-percent_y)/2)]).split(r)[1];

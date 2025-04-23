@@ -2441,6 +2441,7 @@ dependencies = [
  "crossterm 0.27.0",
  "futures",
  "gemini-rs",
+ "once_cell",
  "ratatui 0.28.1",
  "regex",
  "reqwest",

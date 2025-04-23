@@ -17,6 +17,7 @@ use ui::render_commits;
 use crate::input::{handle_key, handle_mouse};
 use crate::models::SelectedCommits;
 use std::collections::HashSet;
+use utils::CommitData;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum CommitTab {
@@ -52,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     let mut current_index = intervals.iter().position(|(_, d)| *d == initial_interval).unwrap_or(0);
     let mut current_interval = intervals[current_index].1;
     let mut filter_by_user = true;
-    let mut commits = reload_commits(&repos, current_interval, filter_by_user)?;
+    let mut commits: CommitData = reload_commits(&repos, current_interval, filter_by_user)?;
 
     let mut selected_repo_index = usize::MAX;
     let mut selected_commit_index: Option<usize> = None;
@@ -163,7 +164,6 @@ fn main() -> anyhow::Result<()> {
                             &mut focus,
                             &mut sidebar_scroll,
                             &mut commitlist_scroll,
-                            &mut show_details,
                             &popup_quote,
                             &selected_commits,
                             sidebar_area,

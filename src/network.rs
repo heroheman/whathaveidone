@@ -1,7 +1,7 @@
 use reqwest;
 use serde_json;
 
-#[allow(dead_code)]
+/// Fetches a random quote from an online API.
 pub async fn fetch_quote() -> Result<String, reqwest::Error> {
     let resp = reqwest::get("https://dummyjson.com/quotes/random").await?;
     let json: serde_json::Value = resp.json().await?;
@@ -10,8 +10,7 @@ pub async fn fetch_quote() -> Result<String, reqwest::Error> {
     Ok(format!("{}\n\n— {}", quote, author))
 }
 
-#[allow(dead_code)]
-// Gemini Star Trek quote fetcher
+/// Fetches a random Star Trek quote using Gemini.
 pub async fn fetch_gemini_startrek_quote() -> Result<String, Box<dyn std::error::Error>> {
     let response = gemini_rs::chat("gemini-2.0-flash")
         .send_message("Give me a random Star Trek quote.")
@@ -46,7 +45,6 @@ Beispiel für die Git-Historie von [Datum] bis [Datum]:
 Tägliche Aufschlüsselung:
 - [*Datum 1*]: [Änderungen an diesem Tag zusammengefasst]
 - [*Datum 2*]: [Änderungen an diesem Tag zusammengefasst]
-
 "#;
     let user_message = format!("{}\n\nGit-Historie:\n{}", prompt, commits);
     let response = gemini_rs::chat("gemini-2.0-flash")

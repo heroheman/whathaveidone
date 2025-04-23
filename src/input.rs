@@ -5,7 +5,7 @@ use arboard::Clipboard;
 use crate::models::FocusArea;
 use crate::models::PopupQuote;
 use crate::git::reload_commits;
-use crate::utils::{get_active_commits};
+use crate::utils::{get_active_commits, CommitData};
 use anyhow::Result;
 use crate::models::SelectedCommits;
 use crate::network::fetch_gemini_commit_summary;
@@ -17,7 +17,7 @@ pub fn handle_key(
     current_interval: &mut Duration,
     filter_by_user: &mut bool,
     repos: &Vec<PathBuf>,
-    commits: &mut Vec<(PathBuf, Vec<String>)>,
+    commits: &mut CommitData,
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
     show_details: &mut bool,
@@ -286,13 +286,13 @@ pub fn handle_key(
 pub fn handle_mouse(
     mouse_event: MouseEvent,
     repos: &Vec<PathBuf>,
-    commits: &Vec<(PathBuf, Vec<String>)>,
+    commits: &CommitData,
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
     focus: &mut FocusArea,
     sidebar_scroll: &mut usize,
     commitlist_scroll: &mut usize,
-    show_details: &mut bool,
+    // show_details: &mut bool, // Removed unused parameter
     popup_quote: &Arc<Mutex<PopupQuote>>,
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     sidebar_area: ratatui::prelude::Rect,

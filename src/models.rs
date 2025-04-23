@@ -1,18 +1,23 @@
 use std::collections::HashSet;
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// Which UI area is currently focused.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum FocusArea {
     Sidebar,
     CommitList,
     Detail,
 }
 
+/// State for the AI quote popup.
+#[derive(Debug)]
 pub struct PopupQuote {
     pub visible: bool,
     pub text: String,
     pub loading: bool,
 }
 
+/// State for selected/marked commits.
+#[derive(Debug)]
 pub struct SelectedCommits {
     pub set: HashSet<String>,
     pub popup_visible: bool,
