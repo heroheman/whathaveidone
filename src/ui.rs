@@ -65,7 +65,7 @@ pub fn render_commits(
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(2), // sidebar list
-            Constraint::Length(4), // button box
+            // Removed button box area
         ])
         .split(sidebar_area);
 
@@ -85,15 +85,6 @@ pub fn render_commits(
     let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
         .style(if focus==FocusArea::Sidebar {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)});
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
-
-    // Button box below sidebar
-    let button_items = vec![
-        ListItem::new("[★] Selection").style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        ListItem::new("[AI] Summary of current view").style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
-    ];
-    let button_list = List::new(button_items)
-        .block(Block::default().borders(Borders::ALL).title("Actions"));
-    f.render_widget(button_list, sidebar_chunks[1]);
 
     // Commit list layout with scrollbar
     let commit_layout = Layout::default()
