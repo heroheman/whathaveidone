@@ -82,7 +82,7 @@ pub fn render_commits(
     let sidebar = List::new(repo_list);
     let mut sidebar_state = ListState::default();
     sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+1}));
-    let sidebar_block = Block::default().title("Repositories").borders(Borders::ALL)
+    let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
         .style(if focus==FocusArea::Sidebar {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)});
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
 
@@ -102,7 +102,7 @@ pub fn render_commits(
         .split(commit_area);
 
     // Tabs for commit list (refactored)
-    let tab_titles = ["Timeframe", "Selection"];
+    let tab_titles = ["Timeframe [2]", "Selection [3]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
         .block(Block::default().borders(Borders::ALL).title("Commits"))
         .style(Style::default().white())

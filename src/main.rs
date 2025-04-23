@@ -203,11 +203,17 @@ fn main() -> anyhow::Result<()> {
                             let x = mouse_event.column as u16;
                             let y = mouse_event.row as u16;
                             if y >= tabs_area.y && y < tabs_area.y + tabs_area.height {
-                                let tab_width = tabs_area.width / 2;
-                                if x >= tabs_area.x && x < tabs_area.x + tab_width {
-                                    selected_tab = CommitTab::Timeframe;
-                                } else if x >= tabs_area.x + tab_width && x < tabs_area.x + tabs_area.width {
-                                    selected_tab = CommitTab::Selection;
+                                // Calculate tab title widths with padding
+                                let tab_titles = ["Timeframe", "Selection"];
+                                let padding = 2; // 1 space left/right
+                                let mut tab_x = tabs_area.x;
+                                for (i, title) in tab_titles.iter().enumerate() {
+                                    let tab_width = title.len() as u16 + padding * 2;
+                                    if x >= tab_x && x < tab_x + tab_width {
+                                        selected_tab = CommitTab::from_index(i);
+                                        break;
+                                    }
+                                    tab_x += tab_width + 1; // +1 for divider
                                 }
                             }
                         }
