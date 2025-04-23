@@ -41,20 +41,7 @@ A terminal tool to summarize your Git commit history for daily standups, using A
    - `A`: Show AI summary popup
    - `Q`: Quit
 
-## Customizing the AI Prompt
 
-Edit the file `prompt.txt` to change how the summary is generated.  
-The default prompt includes instructions for grouping by day, topic, and handling ticket numbers.
-
-Example from `prompt.txt`:
-```
-Overall summary: Summarize all changes in the Git history in short, concise bullet points by grouping similar changes and highlighting their main topics and functions.
-
-- Breakdown by day: Provide a summary of the changes for each day in a single line, highlighting the most important changes and features.
-...
-```
-
-## Publishing
-
-To let others use your app, push your code to GitHub and share the repository.  
-Optionally, publish to [crates.io](https://crates.io/) for easy installation via `cargo install`.
+## Links
+- [Whathaveidone](https://crates.io/crates/whathaveidone) on Crates
+- [Whathaveidone](https://github.com/heroheman/whathaveidone) on Github
