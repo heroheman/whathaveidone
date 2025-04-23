@@ -29,3 +29,4 @@ reqwest = { version = "0.12.15", features = ["json"] }
 gemini-rs = "=1.1.0"
 arboard = "3.2"
 regex = "1.11.1"
+tui-scrollview = "0.5.1"
