@@ -5,10 +5,10 @@ use arboard::Clipboard;
 use crate::models::FocusArea;
 use crate::models::PopupQuote;
 use crate::git::reload_commits;
-use crate::utils::{get_active_commits, get_sidebar_height, get_commitlist_height, calculate_max_detail_scroll};
-use crate::network::fetch_gemini_commit_summary;
+use crate::utils::{get_active_commits};
 use anyhow::Result;
 use crate::models::SelectedCommits;
+use crate::network::fetch_gemini_commit_summary;
 
 pub fn handle_key(
     key: KeyCode,
@@ -28,6 +28,7 @@ pub fn handle_key(
     popup_quote: &Arc<Mutex<PopupQuote>>,
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     rt: &Runtime,
+    selected_tab: crate::CommitTab,
 ) -> Result<bool> {
     match key {
         KeyCode::Char('1') => {
@@ -207,31 +208,47 @@ pub fn handle_key(
             *detail_scroll=0;
         }
         KeyCode::Char('q') => return Ok(false),
-        KeyCode::Char('a') => {
-            // Prompt-Template aus Datei laden
+        KeyCode::Char('a') | KeyCode::Char('A') => {
             let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
-            // Projektname und Zeitfenster bestimmen
-            let (project_name, commit_str) = if *selected_repo_index == usize::MAX {
-                let all_commits = commits.iter()
-                    .flat_map(|(repo, msgs)| {
-                        let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
-                        msgs.iter().map(move |msg| format!("[{}] {}", repo_name, msg))
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                ("Alle Projekte".to_string(), all_commits)
-            } else {
-                let project = commits.get(*selected_repo_index)
-                    .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
-                    .unwrap_or_else(|| "Projekt".to_string());
-                let commitlist = commits.get(*selected_repo_index)
-                    .map(|(_repo, msgs)| msgs.join("\n"))
-                    .unwrap_or_default();
-                (project, commitlist)
+            let (project_name, commit_str) = match selected_tab {
+                crate::CommitTab::Timeframe => {
+                    if *selected_repo_index == usize::MAX {
+                        let all_commits = commits.iter()
+                            .flat_map(|(repo, msgs)| {
+                                let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
+                                msgs.iter().map(move |msg| format!("[{}] {}", repo_name, msg))
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        ("All projects".to_string(), all_commits)
+                    } else {
+                        let project = commits.get(*selected_repo_index)
+                            .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
+                            .unwrap_or_else(|| "Project".to_string());
+                        let commitlist = commits.get(*selected_repo_index)
+                            .map(|(_repo, msgs)| msgs.join("\n"))
+                            .unwrap_or_default();
+                        (project, commitlist)
+                    }
+                }
+                crate::CommitTab::Selection => {
+                    let sel = selected_commits.lock().unwrap();
+                    let mut hash_to_commit = std::collections::HashMap::new();
+                    for (_repo, repo_commits) in commits.iter() {
+                        for commit in repo_commits {
+                            if let Some(hash) = commit.split_whitespace().next() {
+                                hash_to_commit.insert(hash, commit);
+                            }
+                        }
+                    }
+                    let commit_lines: Vec<String> = sel.set.iter()
+                        .filter_map(|hash| hash_to_commit.get(hash.as_str()).map(|s| s.to_string()))
+                        .collect();
+                    let commit_str = commit_lines.join("\n");
+                    ("Selection".to_string(), commit_str)
+                }
             };
-            // Zeitfenster als String
             let interval_str = intervals[*current_index].0;
-            // Prompt bauen
             let prompt = format!(
                 "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
                 template=prompt_template,
@@ -245,54 +262,6 @@ pub fn handle_key(
                 let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Error: {}", e));
                 let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
             });
-        }
-        KeyCode::Char('A') => {
-            // Send only marked commits to Gemini
-            let sel = selected_commits.lock().unwrap();
-            if sel.set.is_empty() {
-                let mut p = popup_quote.lock().unwrap();
-                p.visible = true;
-                p.loading = false;
-                p.text = "No commits marked.".to_string();
-            } else {
-                // Build hash -> commit line map
-                let mut hash_to_commit = std::collections::HashMap::new();
-                for (_repo, commits) in commits.iter() {
-                    for commit in commits {
-                        if let Some(hash) = commit.split_whitespace().next() {
-                            hash_to_commit.insert(hash, commit);
-                        }
-                    }
-                }
-                // Collect full commit lines for selected hashes
-                let commit_lines: Vec<String> = sel.set.iter()
-                    .filter_map(|hash| hash_to_commit.get(hash.as_str()).map(|s| s.to_string()))
-                    .collect();
-                let commit_str = commit_lines.join("\n");
-                // Use current project name and interval
-                let project_name = if *selected_repo_index == usize::MAX {
-                    "All projects".to_string()
-                } else {
-                    commits.get(*selected_repo_index)
-                        .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
-                        .unwrap_or_else(|| "Project".to_string())
-                };
-                let interval_str = intervals[*current_index].0;
-                let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
-                let prompt = format!(
-                    "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
-                    template=prompt_template,
-                    project=project_name,
-                    interval=interval_str,
-                    commits=commit_str
-                );
-                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
-                let p2 = popup_quote.clone();
-                rt.spawn(async move {
-                    let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Error: {}", e));
-                    let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
-                });
-            }
         }
         KeyCode::Char('c') => {
             // Kopieren, wenn Popup sichtbar
@@ -327,6 +296,7 @@ pub fn handle_mouse(
     popup_quote: &Arc<Mutex<PopupQuote>>,
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     sidebar_area: ratatui::prelude::Rect,
+    selected_tab: &mut crate::CommitTab,
 ) {
     use crate::network::fetch_gemini_commit_summary;
     use std::thread;
@@ -392,8 +362,11 @@ pub fn handle_mouse(
                 *selected_repo_index = usize::MAX;
             } else if idx > 0 && idx <= repos.len() {
                 *selected_repo_index = idx - 1;
+                // Only when a repo name is clicked, switch to timeframe tab (do not change focus)
+                *selected_tab = crate::CommitTab::Timeframe;
             }
             *selected_commit_index = None;
+            // Do not change focus here
             return;
         } else {
             // Commit list area

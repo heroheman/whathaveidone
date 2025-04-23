@@ -147,6 +147,7 @@ fn main() -> anyhow::Result<()> {
                         &popup_quote,
                         &selected_commits,
                         &rt,
+                        selected_tab,
                     )? {
                         break;
                     }
@@ -166,6 +167,7 @@ fn main() -> anyhow::Result<()> {
                             &popup_quote,
                             &selected_commits,
                             sidebar_area,
+                            &mut selected_tab,
                         );
                         // Mouse support for commit list tabs
                         // Calculate tab area (same as in ui.rs)
