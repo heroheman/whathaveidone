@@ -4,12 +4,14 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Line},
+    symbols,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use crate::models::{FocusArea, PopupQuote};
 use crate::git::get_commit_details;
 use crate::models::SelectedCommits;
+use crate::CommitTab;
 
 pub fn render_commits(
     f: &mut Frame,
@@ -26,6 +28,7 @@ pub fn render_commits(
     filter_by_user: bool,
     popup_quote: Option<&Arc<Mutex<PopupQuote>>>,
     selected_commits: Option<&Arc<Mutex<SelectedCommits>>>,
+    selected_tab: CommitTab,
 ) {
     let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
     let area = f.area();
@@ -57,7 +60,16 @@ pub fn render_commits(
     let commit_area = columns[1];
     let detail_area = if columns.len() > 2 { Some(columns[2]) } else { None };
 
-    // Sidebar
+    // Split sidebar area into sidebar and button box
+    let sidebar_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Min(2), // sidebar list
+            Constraint::Length(4), // button box
+        ])
+        .split(sidebar_area);
+
+    // Sidebar list (repos)
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo,_)| repo).collect();
     let mut repo_list = vec![ListItem::new(format!("{} All", if selected_repo_index==usize::MAX {"→"}else{" "}))
         .style(if selected_repo_index==usize::MAX {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::White)})];
@@ -72,13 +84,46 @@ pub fn render_commits(
     sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+1}));
     let sidebar_block = Block::default().title("Repositories").borders(Borders::ALL)
         .style(if focus==FocusArea::Sidebar {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)});
-    f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_area, &mut sidebar_state);
+    f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
+
+    // Button box below sidebar
+    let button_items = vec![
+        ListItem::new("[★] Selection").style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        ListItem::new("[AI] Summary of current view").style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+    ];
+    let button_list = List::new(button_items)
+        .block(Block::default().borders(Borders::ALL).title("Actions"));
+    f.render_widget(button_list, sidebar_chunks[1]);
 
     // Commit list layout with scrollbar
     let commit_layout = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
         .split(commit_area);
+
+    // Tabs for commit list (refactored)
+    let tab_titles = ["Timeframe", "Selection"];
+    let tabs = ratatui::widgets::Tabs::new(tab_titles)
+        .block(Block::default().borders(Borders::ALL).title("Commits"))
+        .style(Style::default().white())
+        .highlight_style(Style::default().yellow().bold().underlined())
+        .select(selected_tab.as_index())
+        .divider(symbols::DOT)
+        .padding(" ", " ");
+    let tabs_area = Rect {
+        x: commit_area.x,
+        y: commit_area.y,
+        width: commit_area.width,
+        height: 3,
+    };
+    f.render_widget(tabs, tabs_area);
+
+    let list_area = Rect {
+        x: commit_area.x,
+        y: commit_area.y + 3,
+        width: commit_area.width,
+        height: commit_area.height.saturating_sub(3),
+    };
 
     // Header
     let header = if selected_repo_index==usize::MAX {
@@ -89,105 +134,171 @@ pub fn render_commits(
         if filter_by_user { format!("{} (only mine) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
     } else { format!("Standup Commits – {}", interval_label) };
 
-    // Flatten commits for 'All'
-    if selected_repo_index==usize::MAX {
-        let mut items = Vec::new();
-        let mut offset=0;
-        for (repo, commits) in data {
-            items.push(ListItem::new(format!("### {}", repo.file_name().unwrap().to_string_lossy()))
-                .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
-            for (i,commit) in commits.iter().enumerate() {
-                let idx=offset+i;
-                let sel = Some(idx)==selected_commit_index;
-                let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
-                let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                // Syntax highlighting: hash, ticket, author
-                let mut spans = vec![];
-                let mut parts = commit.split_whitespace();
-                if let Some(hash) = parts.next() {
-                    spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
-                }
-                if let Some(second) = parts.next() {
-                    // e.g. author or time
-                    spans.push(Span::raw(format!(" {}", second)));
-                }
-                let rest: String = parts.collect::<Vec<_>>().join(" ");
-                // Highlight ticket numbers (e.g. ABC-1234)
-                let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
-                let mut last = 0;
-                for m in ticket_re.find_iter(&rest) {
-                    if m.start() > last {
-                        spans.push(Span::raw(rest[last..m.start()].to_string()));
+    // Render commit list depending on active tab
+    match selected_tab {
+        CommitTab::Timeframe => {
+            // Flatten commits for 'All'
+            if selected_repo_index==usize::MAX {
+                let mut items = Vec::new();
+                let mut offset=0;
+                for (repo, commits) in data {
+                    items.push(ListItem::new(format!("### {}", repo.file_name().unwrap().to_string_lossy()))
+                        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+                    for (i,commit) in commits.iter().enumerate() {
+                        let idx=offset+i;
+                        let sel = Some(idx)==selected_commit_index;
+                        let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                        let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
+                        // Syntax highlighting: hash, ticket, author
+                        let mut spans = vec![];
+                        let mut parts = commit.split_whitespace();
+                        if let Some(hash) = parts.next() {
+                            spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+                        }
+                        if let Some(second) = parts.next() {
+                            // e.g. author or time
+                            spans.push(Span::raw(format!(" {}", second)));
+                        }
+                        let rest: String = parts.collect::<Vec<_>>().join(" ");
+                        // Highlight ticket numbers (e.g. ABC-1234)
+                        let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
+                        let mut last = 0;
+                        for m in ticket_re.find_iter(&rest) {
+                            if m.start() > last {
+                                spans.push(Span::raw(rest[last..m.start()].to_string()));
+                            }
+                            spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                            last = m.end();
+                        }
+                        if last < rest.len() {
+                            spans.push(Span::raw(rest[last..].to_string()));
+                        }
+                        let style = if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
+                        let mut content = vec![Span::raw(indicator), Span::raw(" ")];
+                        content.extend(spans);
+                        items.push(ListItem::new(Line::from(content)).style(style));
                     }
-                    spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-                    last = m.end();
+                    offset+=commits.len();
                 }
-                if last < rest.len() {
-                    spans.push(Span::raw(rest[last..].to_string()));
+                let mut state = ListState::default(); state.select(selected_commit_index);
+                let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
+                    .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
+                f.render_stateful_widget(list, list_area, &mut state);
+                // scrollbar
+                let total: usize = data.iter().map(|(_,c)|c.len()).sum();
+                let visible = commit_area.height.saturating_sub(2) as usize;
+                let pos = selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
+                let mut sb = ScrollbarState::default().position(pos).content_length(total);
+                f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
+            } else {
+                if let Some((_, commits)) = data.get(selected_repo_index) {
+                    let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
+                        let sel=Some(i)==selected_commit_index;
+                        let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                        let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
+                        // Syntax highlighting: hash, ticket, author
+                        let mut spans = vec![];
+                        let mut parts = commit.split_whitespace();
+                        if let Some(hash) = parts.next() {
+                            spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+                        }
+                        if let Some(second) = parts.next() {
+                            spans.push(Span::raw(format!(" {}", second)));
+                        }
+                        let rest: String = parts.collect::<Vec<_>>().join(" ");
+                        let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
+                        let mut last = 0;
+                        for m in ticket_re.find_iter(&rest) {
+                            if m.start() > last {
+                                spans.push(Span::raw(rest[last..m.start()].to_string()));
+                            }
+                            spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                            last = m.end();
+                        }
+                        if last < rest.len() {
+                            spans.push(Span::raw(rest[last..].to_string()));
+                        }
+                        let style=if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
+                        ListItem::new(Line::from({
+                            let mut content = vec![Span::raw(indicator), Span::raw(" ")];
+                            content.extend(spans);
+                            content
+                        }))
+                        .style(style)
+                    }).collect();
+                    let mut state=ListState::default(); state.select(selected_commit_index);
+                    let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
+                        .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
+                    f.render_stateful_widget(list, list_area, &mut state);
+                    // scrollbar
+                    let total=commits.len();
+                    let visible=commit_area.height.saturating_sub(2) as usize;
+                    let pos=selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
+                    let mut sb=ScrollbarState::default().position(pos).content_length(total);
+                    f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
                 }
-                let style = if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
-                let mut content = vec![Span::raw(indicator), Span::raw(" ")];
-                content.extend(spans);
-                items.push(ListItem::new(Line::from(content)).style(style));
             }
-            offset+=commits.len();
-        }
-        let mut state = ListState::default(); state.select(selected_commit_index);
-        let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-            .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
-        f.render_stateful_widget(list, commit_layout[0], &mut state);
-        // scrollbar
-        let total: usize = data.iter().map(|(_,c)|c.len()).sum();
-        let visible = commit_area.height.saturating_sub(2) as usize;
-        let pos = selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
-        let mut sb = ScrollbarState::default().position(pos).content_length(total);
-        f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
-    } else {
-        if let Some((_, commits)) = data.get(selected_repo_index) {
-            let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
-                let sel=Some(i)==selected_commit_index;
-                let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
-                let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                // Syntax highlighting: hash, ticket, author
-                let mut spans = vec![];
-                let mut parts = commit.split_whitespace();
-                if let Some(hash) = parts.next() {
-                    spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
-                }
-                if let Some(second) = parts.next() {
-                    spans.push(Span::raw(format!(" {}", second)));
-                }
-                let rest: String = parts.collect::<Vec<_>>().join(" ");
-                let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
-                let mut last = 0;
-                for m in ticket_re.find_iter(&rest) {
-                    if m.start() > last {
-                        spans.push(Span::raw(rest[last..m.start()].to_string()));
+        },
+        CommitTab::Selection => {
+            // Render selected commits in the same style
+            if let Some(selected_commits) = selected_commits {
+                let sel = selected_commits.lock().unwrap();
+                if sel.set.is_empty() {
+                    let placeholder = Paragraph::new("No commits selected. Press 'm' to add commits to your selection.")
+                        .block(Block::default().title("Selected Commits").borders(Borders::ALL))
+                        .alignment(Alignment::Center)
+                        .style(Style::default().fg(Color::DarkGray));
+                    f.render_widget(placeholder, list_area);
+                } else {
+                    let mut hash_to_commit = std::collections::HashMap::new();
+                    for (_repo, commits) in data {
+                        for commit in commits {
+                            if let Some(hash) = commit.split_whitespace().next() {
+                                hash_to_commit.insert(hash, commit);
+                            }
+                        }
                     }
-                    spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-                    last = m.end();
+                    let selected_lines: Vec<&String> = sel.set.iter().filter_map(|hash| hash_to_commit.get(hash.as_str()).copied()).collect();
+                    let items: Vec<ListItem> = selected_lines.iter().enumerate().map(|(i,commit)|{
+                        let sel = Some(i)==selected_commit_index;
+                        let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                        let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
+                        // Syntax highlighting: hash, ticket, author
+                        let mut spans = vec![];
+                        let mut parts = commit.split_whitespace();
+                        if let Some(hash) = parts.next() {
+                            spans.push(Span::styled(hash, Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+                        }
+                        if let Some(second) = parts.next() {
+                            spans.push(Span::raw(format!(" {}", second)));
+                        }
+                        let rest: String = parts.collect::<Vec<_>>().join(" ");
+                        let ticket_re = regex::Regex::new(r"[A-Z]+-\d+").unwrap();
+                        let mut last = 0;
+                        for m in ticket_re.find_iter(&rest) {
+                            if m.start() > last {
+                                spans.push(Span::raw(rest[last..m.start()].to_string()));
+                            }
+                            spans.push(Span::styled(rest[m.start()..m.end()].to_string(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                            last = m.end();
+                        }
+                        if last < rest.len() {
+                            spans.push(Span::raw(rest[last..].to_string()));
+                        }
+                        let style=if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
+                        ListItem::new(Line::from({
+                            let mut content = vec![Span::raw(indicator), Span::raw(" ")];
+                            content.extend(spans);
+                            content
+                        }))
+                        .style(style)
+                    }).collect();
+                    let mut state=ListState::default(); state.select(selected_commit_index);
+                    let list = List::new(items).block(Block::default().title("Selected Commits").borders(Borders::ALL)
+                        .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
+                    f.render_stateful_widget(list, list_area, &mut state);
                 }
-                if last < rest.len() {
-                    spans.push(Span::raw(rest[last..].to_string()));
-                }
-                let style=if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
-                ListItem::new(Line::from({
-                    let mut content = vec![Span::raw(indicator), Span::raw(" ")];
-                    content.extend(spans);
-                    content
-                }))
-                .style(style)
-            }).collect();
-            let mut state=ListState::default(); state.select(selected_commit_index);
-            let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-                .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
-            f.render_stateful_widget(list, commit_layout[0], &mut state);
-            // scrollbar
-            let total=commits.len();
-            let visible=commit_area.height.saturating_sub(2) as usize;
-            let pos=selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
-            let mut sb=ScrollbarState::default().position(pos).content_length(total);
-            f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
+            }
         }
     }
 

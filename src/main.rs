@@ -9,14 +9,34 @@ mod input;
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event}};
+use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event, KeyCode}};
 use ratatui::prelude::*;
 use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
 use ui::render_commits;
-use crate::input::handle_key;
+use crate::input::{handle_key, handle_mouse};
 use crate::models::SelectedCommits;
 use std::collections::HashSet;
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum CommitTab {
+    Timeframe,
+    Selection,
+}
+impl CommitTab {
+    fn as_index(self) -> usize {
+        match self {
+            CommitTab::Timeframe => 0,
+            CommitTab::Selection => 1,
+        }
+    }
+    fn from_index(idx: usize) -> Self {
+        match idx {
+            1 => CommitTab::Selection,
+            _ => CommitTab::Timeframe,
+        }
+    }
+}
 
 fn main() -> anyhow::Result<()> {
     let initial_interval = parse_args();
@@ -48,12 +68,40 @@ fn main() -> anyhow::Result<()> {
 
     let rt = Runtime::new()?;
     terminal::enable_raw_mode()?;
+    crossterm::execute!(std::io::stdout(), crossterm::event::EnableMouseCapture)?;
     let mut terminal = Terminal::new(CrosstermBackend::new(std::io::stdout()))?;
     execute!(std::io::stdout(), CrosstermClear(ClearType::All))?;
     let poll_timeout = std::time::Duration::from_millis(30);
 
+    let mut last_sidebar_area = None;
+    let mut selected_tab = CommitTab::Timeframe;
     loop {
         terminal.draw(|f| {
+            // Compute layout to get sidebar_area
+            let area = f.area();
+            let vertical_chunks = ratatui::layout::Layout::default()
+                .direction(ratatui::layout::Direction::Vertical)
+                .constraints([ratatui::layout::Constraint::Min(1), ratatui::layout::Constraint::Length(3)]).split(area);
+            let columns = if show_details && selected_commit_index.is_some() {
+                ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Horizontal)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(30),
+                        ratatui::layout::Constraint::Percentage(60),
+                        ratatui::layout::Constraint::Percentage(40),
+                    ])
+                    .split(vertical_chunks[0])
+            } else {
+                ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Horizontal)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(30),
+                        ratatui::layout::Constraint::Min(1),
+                    ])
+                    .split(vertical_chunks[0])
+            };
+            let sidebar_area = columns[0];
+            last_sidebar_area = Some(sidebar_area);
             render_commits(
                 f,
                 &repos,
@@ -69,37 +117,109 @@ fn main() -> anyhow::Result<()> {
                 filter_by_user,
                 Some(&popup_quote),
                 Some(&selected_commits),
+                selected_tab,
             );
         })?;
 
         if event::poll(poll_timeout)? {
-            if let Event::Key(key_event) = event::read()? {
-                if !handle_key(
-                    key_event.code,
-                    &intervals,
-                    &mut current_index,
-                    &mut current_interval,
-                    &mut filter_by_user,
-                    &repos,
-                    &mut commits,
-                    &mut selected_repo_index,
-                    &mut selected_commit_index,
-                    &mut show_details,
-                    &mut focus,
-                    &mut sidebar_scroll,
-                    &mut commitlist_scroll,
-                    &mut detail_scroll,
-                    &popup_quote,
-                    &selected_commits,
-                    &rt,
-                )? {
-                    break;
+            match event::read()? {
+                Event::Key(key_event) => {
+                    match key_event.code {
+                        KeyCode::Char('2') => selected_tab = CommitTab::Timeframe,
+                        KeyCode::Char('3') | KeyCode::Char('s') => selected_tab = CommitTab::Selection,
+                        _ => {}
+                    }
+                    if !handle_key(
+                        key_event.code,
+                        &intervals,
+                        &mut current_index,
+                        &mut current_interval,
+                        &mut filter_by_user,
+                        &repos,
+                        &mut commits,
+                        &mut selected_repo_index,
+                        &mut selected_commit_index,
+                        &mut show_details,
+                        &mut focus,
+                        &mut sidebar_scroll,
+                        &mut commitlist_scroll,
+                        &mut detail_scroll,
+                        &popup_quote,
+                        &selected_commits,
+                        &rt,
+                    )? {
+                        break;
+                    }
                 }
+                Event::Mouse(mouse_event) => {
+                    if let Some(sidebar_area) = last_sidebar_area {
+                        handle_mouse(
+                            mouse_event,
+                            &repos,
+                            &commits,
+                            &mut selected_repo_index,
+                            &mut selected_commit_index,
+                            &mut focus,
+                            &mut sidebar_scroll,
+                            &mut commitlist_scroll,
+                            &mut show_details,
+                            &popup_quote,
+                            &selected_commits,
+                            sidebar_area,
+                        );
+                        // Mouse support for commit list tabs
+                        // Calculate tab area (same as in ui.rs)
+                        let area = terminal.get_frame().area();
+                        let vertical_chunks = ratatui::layout::Layout::default()
+                            .direction(ratatui::layout::Direction::Vertical)
+                            .constraints([ratatui::layout::Constraint::Min(1), ratatui::layout::Constraint::Length(3)]).split(area);
+                        let columns = if show_details && selected_commit_index.is_some() {
+                            ratatui::layout::Layout::default()
+                                .direction(ratatui::layout::Direction::Horizontal)
+                                .constraints([
+                                    ratatui::layout::Constraint::Length(30),
+                                    ratatui::layout::Constraint::Percentage(60),
+                                    ratatui::layout::Constraint::Percentage(40),
+                                ])
+                                .split(vertical_chunks[0])
+                        } else {
+                            ratatui::layout::Layout::default()
+                                .direction(ratatui::layout::Direction::Horizontal)
+                                .constraints([
+                                    ratatui::layout::Constraint::Length(30),
+                                    ratatui::layout::Constraint::Min(1),
+                                ])
+                                .split(vertical_chunks[0])
+                        };
+                        let commit_area = columns[1];
+                        let tabs_area = ratatui::prelude::Rect {
+                            x: commit_area.x,
+                            y: commit_area.y,
+                            width: commit_area.width,
+                            height: 3,
+                        };
+                        use crossterm::event::MouseEventKind;
+                        if let MouseEventKind::Down(_) = mouse_event.kind {
+                            let x = mouse_event.column as u16;
+                            let y = mouse_event.row as u16;
+                            if y >= tabs_area.y && y < tabs_area.y + tabs_area.height {
+                                let tab_width = tabs_area.width / 2;
+                                if x >= tabs_area.x && x < tabs_area.x + tab_width {
+                                    selected_tab = CommitTab::Timeframe;
+                                } else if x >= tabs_area.x + tab_width && x < tabs_area.x + tabs_area.width {
+                                    selected_tab = CommitTab::Selection;
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
 
     terminal::disable_raw_mode()?;
+    crossterm::execute!(std::io::stdout(), crossterm::event::DisableMouseCapture)?;
     Ok(())
 }
 

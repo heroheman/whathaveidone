@@ -1,8 +1,17 @@
 {
     "cSpell.words": [
+        "ähnliche",
+        "arboard",
         "chrono",
+        "commitlist",
         "crossterm",
         "ratatui",
+        "reqwest",
+        "serde",
+        "standups",
+        "unmark",
+        "whathaveidone",
+        "whid",
         "Woche"
     ]
 }
