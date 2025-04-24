@@ -512,5 +512,124 @@ pub fn handle_mouse(
                 }
             }
         }
+        // Commit list and selection list mouse support
+        // Get main window size and layout
+        let area = crossterm::terminal::size().unwrap_or((120,40));
+        let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
+        let vertical_chunks = ratatui::layout::Layout::default()
+            .direction(ratatui::layout::Direction::Vertical)
+            .constraints([
+                ratatui::layout::Constraint::Min(1),
+                ratatui::layout::Constraint::Length(3)
+            ]).split(area);
+        let columns = if let Some(selected_commit_index) = selected_commit_index {
+            if *selected_commit_index != usize::MAX && *focus == crate::models::FocusArea::Detail {
+                ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Horizontal)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(30),
+                        ratatui::layout::Constraint::Percentage(60),
+                        ratatui::layout::Constraint::Percentage(40),
+                    ])
+                    .split(vertical_chunks[0])
+            } else {
+                ratatui::layout::Layout::default()
+                    .direction(ratatui::layout::Direction::Horizontal)
+                    .constraints([
+                        ratatui::layout::Constraint::Length(30),
+                        ratatui::layout::Constraint::Min(1),
+                    ])
+                    .split(vertical_chunks[0])
+            }
+        } else {
+            ratatui::layout::Layout::default()
+                .direction(ratatui::layout::Direction::Horizontal)
+                .constraints([
+                    ratatui::layout::Constraint::Length(30),
+                    ratatui::layout::Constraint::Min(1),
+                ])
+                .split(vertical_chunks[0])
+        };
+        let commit_area = columns[1];
+        let x = mouse_event.column as u16;
+        let y = mouse_event.row as u16;
+        // Only handle click if inside commit list area
+        if x >= commit_area.x && x < commit_area.x + commit_area.width && y >= commit_area.y + 3 && y < commit_area.y + commit_area.height {
+            // y - (commit_area.y + 3) is the index in the visible list
+            let list_index = (y - (commit_area.y + 3)) as usize;
+            match *selected_tab {
+                crate::CommitTab::Timeframe => {
+                    // Map list_index to commit index, considering scrolling
+                    let mut offset = 0;
+                    let mut found = None;
+                    if *selected_repo_index == usize::MAX {
+                        // All projects: flatten
+                        for (_repo, repo_commits) in commits.iter() {
+                            for (i, _commit) in repo_commits.iter().enumerate() {
+                                if offset == list_index + *commitlist_scroll {
+                                    found = Some(offset);
+                                    break;
+                                }
+                                offset += 1;
+                            }
+                            if found.is_some() { break; }
+                        }
+                    } else if let Some((_repo, repo_commits)) = commits.get(*selected_repo_index) {
+                        if list_index + *commitlist_scroll < repo_commits.len() {
+                            found = Some(list_index + *commitlist_scroll);
+                        }
+                    }
+                    if let Some(idx) = found {
+                        *selected_commit_index = Some(idx);
+                        *focus = crate::models::FocusArea::CommitList;
+                    }
+                }
+                crate::CommitTab::Selection => {
+                    // Selection list: map to selected_commits
+                    let sel = selected_commits.lock().unwrap();
+                    if list_index < sel.set.len() {
+                        *selected_commit_index = Some(list_index);
+                        *focus = crate::models::FocusArea::CommitList;
+                    }
+                }
+            }
+            return;
+        }
+    }
+    if let MouseEventKind::ScrollUp = mouse_event.kind {
+        let popup_area = {
+            let area = crossterm::terminal::size().unwrap_or((120,40));
+            let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
+            crate::ui::centered_rect(60, 80, area)
+        };
+        let x = mouse_event.column as u16;
+        let y = mouse_event.row as u16;
+        if let Ok(mut popup) = popup_quote.lock() {
+            if popup.visible && x >= popup_area.x && x < popup_area.x + popup_area.width && y >= popup_area.y && y < popup_area.y + popup_area.height {
+                if popup.scroll > 0 {
+                    popup.scroll -= 1;
+                }
+                return;
+            }
+        }
+    }
+    if let MouseEventKind::ScrollDown = mouse_event.kind {
+        let popup_area = {
+            let area = crossterm::terminal::size().unwrap_or((120,40));
+            let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
+            crate::ui::centered_rect(60, 80, area)
+        };
+        let x = mouse_event.column as u16;
+        let y = mouse_event.row as u16;
+        if let Ok(mut popup) = popup_quote.lock() {
+            if popup.visible && x >= popup_area.x && x < popup_area.x + popup_area.width && y >= popup_area.y && y < popup_area.y + popup_area.height {
+                let text_lines = popup.text.lines().count() as u16;
+                let popup_height = popup_area.height.saturating_sub(4); // account for padding/title/footer
+                if popup.scroll + popup_height < text_lines {
+                    popup.scroll += 1;
+                }
+                return;
+            }
+        }
     }
 }
