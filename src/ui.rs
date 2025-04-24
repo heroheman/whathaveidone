@@ -117,7 +117,11 @@ pub fn render_commits(
     };
     repo_list.push(ListItem::new(vec![
         Line::from(vec![Span::styled("All", all_style)]),
-        Line::from(vec![Span::styled(format!("{} projects", filtered_repos.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))]),
+        Line::from(vec![
+            Span::styled(format!("{} projects", filtered_repos.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
+            Span::raw("  ·  "),
+            Span::styled(interval_label, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+        ]),
     ]));
     // Visual divider
     repo_list.push(ListItem::new(Line::from(vec![Span::styled("────────────", Style::default().fg(Color::DarkGray))])));
