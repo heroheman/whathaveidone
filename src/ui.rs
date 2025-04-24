@@ -435,7 +435,14 @@ pub fn render_commits(
             let scroll = popup.scroll;
             let text_line_count = popup.text.lines().count() as u16;
             // Add padding to the popup content
-            let padded_text = format!("\n  {}\n\n", popup.text.replace("\n", "\n  "));
+            let padded_text = format!(
+                "\n  {}  \n",
+                popup.text
+                    .lines()
+                    .map(|line| format!("  {}  ", line))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
             let para = Paragraph::new(padded_text)
                 .block(block.title(Line::from(title_line)))
                 .wrap(Wrap{trim:true})
