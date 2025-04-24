@@ -148,6 +148,14 @@ pub fn handle_key(
             }
         }
         KeyCode::Up | KeyCode::Char('k') => {
+            // Popup scroll up
+            let mut popup = popup_quote.lock().unwrap();
+            if popup.visible && popup.scroll > 0 {
+                popup.scroll -= 1;
+                return Ok(true); // Prevent background navigation
+            } else if popup.visible {
+                return Ok(true); // Prevent background navigation
+            }
             match *focus {
                 FocusArea::Sidebar => {
                     // Sidebar: Up navigation
@@ -182,6 +190,18 @@ pub fn handle_key(
             }
         }
         KeyCode::Down | KeyCode::Char('j') => {
+            // Popup scroll down
+            let mut popup = popup_quote.lock().unwrap();
+            if popup.visible {
+                let text_lines = popup.text.lines().count() as u16;
+                // Estimate popup height (centered_rect(60,80,area)), minus title/footer
+                let area = crossterm::terminal::size().unwrap_or((120,40));
+                let popup_height = (area.1 as f32 * 0.8) as u16 - 4;
+                if popup.scroll + popup_height < text_lines {
+                    popup.scroll += 1;
+                }
+                return Ok(true); // Prevent background navigation
+            }
             match *focus {
                 FocusArea::Sidebar => {
                     let repo_count = commits.len();
@@ -326,7 +346,7 @@ pub fn handle_key(
             }
         }
         KeyCode::Esc => { 
-            let mut p = popup_quote.lock().unwrap(); p.visible=false; 
+            let mut p = popup_quote.lock().unwrap(); p.visible=false; p.scroll=0; 
             let mut sel = selected_commits.lock().unwrap(); sel.popup_visible = false;
         }
         _ => {}

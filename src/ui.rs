@@ -72,6 +72,15 @@ pub fn render_commits(
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(3)]).split(area);
 
+    // Determine if we should dim the background
+    let dim_bg = popup_quote.map_or(false, |arc| arc.lock().unwrap().visible);
+    let bg_fg = if dim_bg { Color::DarkGray } else { Color::White };
+    let bg_cyan = if dim_bg { Color::DarkGray } else { Color::Cyan };
+    let bg_magenta = if dim_bg { Color::DarkGray } else { Color::Magenta };
+    let bg_green = if dim_bg { Color::DarkGray } else { Color::Green };
+    let bg_yellow = if dim_bg { Color::DarkGray } else { Color::Yellow };
+    let bg_red = if dim_bg { Color::DarkGray } else { Color::Red };
+
     // Main layout: sidebar, commits, optional detail
     let columns = if show_details && selected_commit_index.is_some() {
         Layout::default()
@@ -113,9 +122,9 @@ pub fn render_commits(
     // 'All' entry
     let all_selected = selected_repo_index == usize::MAX;
     let all_style = if all_selected {
-        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)
     } else {
-        Style::default().fg(Color::White)
+        Style::default().fg(bg_fg)
     };
     repo_list.push(ListItem::new(vec![
         Line::from(vec![Span::styled(
@@ -140,14 +149,14 @@ pub fn render_commits(
             let name = repo.file_name().unwrap_or_default().to_string_lossy();
             let selected = selected_repo_index == i;
             let style = if selected {
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+                Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(Color::White)
+                Style::default().fg(bg_fg)
             };
             // Find commit count for this repo
             let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
             let count_style = if count > 0 {
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                Style::default().fg(bg_green).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
             };
@@ -157,11 +166,11 @@ pub fn render_commits(
             ]));
         }
     }
-    let sidebar = List::new(repo_list).highlight_symbol("→");
+    let sidebar = List::new(repo_list).highlight_symbol("→").style(Style::default().fg(bg_fg));
     let mut sidebar_state = ListState::default();
     sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+2}));
     let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
-        .style(if focus==FocusArea::Sidebar {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)});
+        .style(Style::default().fg(bg_cyan));
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
 
     // Commit list layout with scrollbar
@@ -174,8 +183,8 @@ pub fn render_commits(
     let tab_titles = ["Timeframe [2]", "Selection [3]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
         .block(Block::default().borders(Borders::ALL).title("Select View"))
-        .style(Style::default().white())
-        .highlight_style(Style::default().yellow().bold().underlined())
+        .style(Style::default().fg(bg_fg))
+        .highlight_style(Style::default().fg(bg_yellow).bold().underlined())
         .select(selected_tab.as_index())
         .divider(symbols::DOT)
         .padding(" ", " ");
@@ -202,6 +211,7 @@ pub fn render_commits(
         let name = repo.file_name().unwrap().to_string_lossy();
         if filter_by_user { format!("{} (only mine) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
     } else { format!("Standup Commits – {}", interval_label) };
+    let header_style = Style::default().fg(bg_fg);
 
     // Render commit list depending on active tab
     match selected_tab {
@@ -218,7 +228,7 @@ pub fn render_commits(
                         let sel = Some(idx)==selected_commit_index;
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        let style = if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
+                        let style = if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
                         let line = render_commit_line(commit, indicator, sel);
                         items.push(ListItem::new(line).style(style));
                     }
@@ -226,7 +236,7 @@ pub fn render_commits(
                 }
                 let mut state = ListState::default(); state.select(selected_commit_index);
                 let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-                    .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
+                    .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total: usize = data.iter().map(|(_,c)|c.len()).sum();
@@ -240,13 +250,13 @@ pub fn render_commits(
                         let sel=Some(i)==selected_commit_index;
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        let style=if sel {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default()};
+                        let style=if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
                         let line = render_commit_line(commit, indicator, sel);
                         ListItem::new(line).style(style)
                     }).collect();
                     let mut state=ListState::default(); state.select(selected_commit_index);
                     let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-                        .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
+                        .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
                     f.render_stateful_widget(list, list_area, &mut state);
                     // scrollbar
                     let total=commits.len();
@@ -264,7 +274,7 @@ pub fn render_commits(
                     let placeholder = Paragraph::new("No commits selected. Press 'm' to add commits to your selection.")
                         .block(Block::default().title("Selected Commits").borders(Borders::ALL))
                         .alignment(Alignment::Center)
-                        .style(Style::default().fg(Color::DarkGray));
+                        .style(Style::default().fg(bg_fg));
                     f.render_widget(placeholder, list_area);
                 } else {
                     // Map: repo_path -> Vec<commit>
@@ -287,14 +297,14 @@ pub fn render_commits(
                         for commit in commits.iter() {
                             let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
                             let indicator = format!("{}  ", star);
-                            let style = Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD);
+                            let style = Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD);
                             let line = render_commit_line(commit, indicator, true);
                             items.push(ListItem::new(line).style(style));
                         }
                     }
                     let mut state = ListState::default(); state.select(selected_commit_index);
                     let list = List::new(items).block(Block::default().title("Selected Commits").borders(Borders::ALL)
-                        .style(if focus==FocusArea::CommitList {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)}));
+                        .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
                     f.render_stateful_widget(list, list_area, &mut state);
                 }
             }
@@ -339,7 +349,7 @@ pub fn render_commits(
                 let detail_block = Block::default()
                     .title("Details")
                     .borders(Borders::ALL)
-                    .style(Style::default().fg(Color::Magenta));
+                    .style(Style::default().fg(bg_magenta));
                 f.render_widget(detail_block, detail_chunk);
                 // define padded inner area
                 let padded = Rect {
@@ -362,7 +372,8 @@ pub fn render_commits(
                 // render detail text
                 let para = Paragraph::new(details.clone())
                     .wrap(Wrap { trim: false })
-                    .scroll((detail_scroll, 0));
+                    .scroll((detail_scroll, 0))
+                    .style(Style::default().fg(bg_fg));
                 f.render_widget(para, detail_chunks[0]);
                 // render scrollbar
                 let lines = details.lines().count();
@@ -385,13 +396,19 @@ pub fn render_commits(
         filter_label
     ))
     .block(Block::default().borders(Borders::ALL))
-    .style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
+    .style(Style::default().fg(if dim_bg { Color::DarkGray } else { Color::Gray }).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks[1]);
 
     // popup
     if let Some(arc) = popup_quote {
         let popup = arc.lock().unwrap();
         if popup.visible {
+            // Dim the background
+            let area = f.area();
+            let dim_block = Block::default().style(Style::default().bg(Color::Rgb(30, 30, 30)).fg(Color::Reset));
+            f.render_widget(dim_block, area);
+            // Overlay a dark gray color on all text widgets in the background
+            // (This is a visual effect: set fg to Color::DarkGray for all widgets except the popup)
             // Popup larger
             let popup_area = centered_rect(60,80,f.area());
             f.render_widget(Clear, popup_area);
@@ -414,21 +431,38 @@ pub fn render_commits(
             let pad = if popup_width > title_width + x_button_width + 2 { popup_width - title_width - x_button_width - 2 } else { 1 };
             title_line.push(Span::raw(" ".repeat(pad)));
             title_line.push(x_button);
-            let block = Block::default().borders(Borders::ALL);
-            let para = Paragraph::new(popup.text.clone())
+            let block = Block::default().borders(Borders::ALL).style(Style::default().bg(Color::Black));
+            let scroll = popup.scroll;
+            let text_line_count = popup.text.lines().count() as u16;
+            // Add padding to the popup content
+            let padded_text = format!("\n  {}\n\n", popup.text.replace("\n", "\n  "));
+            let para = Paragraph::new(padded_text)
                 .block(block.title(Line::from(title_line)))
                 .wrap(Wrap{trim:true})
                 .alignment(Alignment::Left)
+                .scroll((scroll, 0))
                 .style(Style::default().fg(Color::White));
             f.render_widget(para, popup_area);
-            // Footer below the popup
+            // Draw a vertical scrollbar inside the popup
+            let scrollbar_area = Rect {
+                x: popup_area.x + popup_area.width - 1,
+                y: popup_area.y + 1,
+                width: 1,
+                height: popup_area.height.saturating_sub(2),
+            };
+            let mut sb = ScrollbarState::default()
+                .position(scroll as usize)
+                .content_length(text_line_count as usize);
+            f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), scrollbar_area, &mut sb);
+            // Footer below the popup (white text)
             let footer_area = Rect {
                 x: popup_area.x,
                 y: popup_area.y + popup_area.height,
                 width: popup_area.width,
                 height: 1,
             };
-            let footer = Paragraph::new("Press c to copy to clipboard").style(Style::default().fg(Color::Gray).add_modifier(Modifier::DIM));
+            let footer = Paragraph::new("Press c to copy to clipboard | ↑/↓ scroll | Esc close")
+                .style(Style::default().fg(Color::White));
             f.render_widget(footer, footer_area);
         }
     }
