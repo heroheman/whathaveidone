@@ -47,8 +47,8 @@ fn main() -> anyhow::Result<()> {
         ("24h", Duration::from_secs(24 * 3600)),
         ("48h", Duration::from_secs(48 * 3600)),
         ("72h", Duration::from_secs(72 * 3600)),
-        ("1 Woche", Duration::from_secs(7 * 24 * 3600)),
-        ("1 Monat", Duration::from_secs(30 * 24 * 3600)),
+        ("1 week", Duration::from_secs(7 * 24 * 3600)),
+        ("1 month", Duration::from_secs(30 * 24 * 3600)),
     ];
     let mut current_index = intervals.iter().position(|(_, d)| *d == initial_interval).unwrap_or(0);
     let mut current_interval = intervals[current_index].1;
