@@ -1,10 +1,11 @@
 use std::error::Error;
+use crate::prompts::{PROMPT_EN, PROMPT_DE};
 // use reqwest;
 // use serde_json;
 
 /// Sends the commit list and a summary prompt to Gemini, returns the summary text.
-pub async fn fetch_gemini_commit_summary(commits: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let prompt = std::fs::read_to_string("prompt.txt").unwrap_or_else(|_| String::from("Summarize the following git history:"));
+pub async fn fetch_gemini_commit_summary(commits: &str, lang: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let prompt = if lang == "de" { PROMPT_DE } else { PROMPT_EN };
     let user_message = format!("{}\n\nGit-History:\n{}", prompt, commits);
     let response = match gemini_rs::chat("gemini-2.0-flash").send_message(&user_message).await {
         Ok(r) => r,

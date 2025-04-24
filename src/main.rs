@@ -5,6 +5,7 @@ mod utils;
 mod network;
 mod ui;
 mod input;
+mod prompts;
 
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
@@ -40,7 +41,7 @@ impl CommitTab {
 }
 
 fn main() -> anyhow::Result<()> {
-    let initial_interval = parse_args();
+    let (initial_interval, lang) = parse_args();
     let repos = find_git_repos(".")?;
 
     let intervals = vec![
@@ -231,15 +232,24 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn parse_args() -> Duration {
+fn parse_args() -> (Duration, String) {
     let args: Vec<String> = env::args().collect();
-    let hours = match args.get(1).map(|s| s.as_str()) {
-        Some("24") => 24,
-        Some("48") => 48,
-        Some("72") => 72,
-        Some("week") => 24 * 7,
-        Some("month") => 24 * 30,
-        _ => 24,
-    };
-    Duration::from_secs((hours * 3600) as u64)
+    let mut hours = 24;
+    let mut lang = "en".to_string();
+    for i in 1..args.len() {
+        match args[i].as_str() {
+            "24" => hours = 24,
+            "48" => hours = 48,
+            "72" => hours = 72,
+            "week" => hours = 24 * 7,
+            "month" => hours = 24 * 30,
+            "--lang" => {
+                if i + 1 < args.len() {
+                    lang = args[i + 1].clone();
+                }
+            },
+            _ => {}
+        }
+    }
+    (Duration::from_secs((hours * 3600) as u64), lang)
 }
