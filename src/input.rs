@@ -45,6 +45,14 @@ pub fn handle_key(
             *current_interval = intervals[*current_index].1;
             *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
             *selected_commit_index = None;
+            // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
+            if *selected_repo_index != usize::MAX {
+                // If the selected repo is not present in the new commit list, reset to ALL
+                if *selected_repo_index >= commits.len() {
+                    *selected_repo_index = usize::MAX;
+                    *selected_commit_index = None;
+                }
+            }
         },
         KeyCode::Char('m') => {
             // Toggle selection of current commit
@@ -88,6 +96,14 @@ pub fn handle_key(
             *current_interval = intervals[*current_index].1;
             *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
             *selected_commit_index = None;
+            // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
+            if *selected_repo_index != usize::MAX {
+                // If the selected repo is not present in the new commit list, reset to ALL
+                if *selected_repo_index >= commits.len() {
+                    *selected_repo_index = usize::MAX;
+                    *selected_commit_index = None;
+                }
+            }
         },
         KeyCode::BackTab => {
             // Shift+Tab cycles backward through timeframes
@@ -99,6 +115,14 @@ pub fn handle_key(
             *current_interval = intervals[*current_index].1;
             *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
             *selected_commit_index = None;
+            // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
+            if *selected_repo_index != usize::MAX {
+                // If the selected repo is not present in the new commit list, reset to ALL
+                if *selected_repo_index >= commits.len() {
+                    *selected_repo_index = usize::MAX;
+                    *selected_commit_index = None;
+                }
+            }
         },
         KeyCode::Char(' ') => {
             if *focus == FocusArea::CommitList {
@@ -125,10 +149,15 @@ pub fn handle_key(
         KeyCode::Up | KeyCode::Char('k') => {
             match *focus {
                 FocusArea::Sidebar => {
-                    let repo_count = commits.len();
+                    // Sidebar: Up navigation
                     if *selected_repo_index == usize::MAX {
-                        if repo_count>0 { *selected_repo_index = 0; }
-                    } else if *selected_repo_index > 0 { *selected_repo_index -= 1; }
+                        // Already at ALL, do nothing
+                    } else if *selected_repo_index == 0 {
+                        // Move to ALL
+                        *selected_repo_index = usize::MAX;
+                    } else {
+                        *selected_repo_index -= 1;
+                    }
                     *selected_commit_index = None;
                     if *selected_repo_index == usize::MAX { *sidebar_scroll = 0; }
                     else if *selected_repo_index < *sidebar_scroll { *sidebar_scroll = *selected_repo_index; }
@@ -143,7 +172,6 @@ pub fn handle_key(
                     } else {
                         if let Some(idx)=*selected_commit_index {
                             if idx>0 { *selected_commit_index = Some(idx-1); } }
-                        else { *selected_commit_index = Some(0); }
                     }
                     *commitlist_scroll = (*selected_commit_index).unwrap_or(0).min(*commitlist_scroll);
                 }
@@ -157,8 +185,11 @@ pub fn handle_key(
                 FocusArea::Sidebar => {
                     let repo_count = commits.len();
                     if *selected_repo_index == usize::MAX {
+                        // Move from ALL to first project if any
                         if repo_count > 0 { *selected_repo_index = 0; }
-                    } else if *selected_repo_index + 1 < repo_count { *selected_repo_index += 1; }
+                    } else if *selected_repo_index + 1 < repo_count {
+                        *selected_repo_index += 1;
+                    }
                     *selected_commit_index = None;
                     if *selected_repo_index == usize::MAX { *sidebar_scroll = 0; }
                     else if *selected_repo_index > *sidebar_scroll { *sidebar_scroll = *selected_repo_index; }
@@ -206,6 +237,14 @@ pub fn handle_key(
             *commits = reload_commits(repos, *current_interval, *filter_by_user)?;
             *selected_commit_index=None;
             *detail_scroll=0;
+            // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
+            if *selected_repo_index != usize::MAX {
+                // If the selected repo is not present in the new commit list, reset to ALL
+                if *selected_repo_index >= commits.len() {
+                    *selected_repo_index = usize::MAX;
+                    *selected_commit_index = None;
+                }
+            }
         }
         KeyCode::Char('q') => return Ok(false),
         KeyCode::Char('a') | KeyCode::Char('A') => {

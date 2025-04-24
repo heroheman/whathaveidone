@@ -105,17 +105,42 @@ pub fn render_commits(
         ])
         .split(sidebar_area);
 
-    // Sidebar list (repos)
+    // Sidebar list (only repos with commits in the current timeframe)
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo,_)| repo).collect();
-    let mut repo_list = vec![ListItem::new(format!("{} All", if selected_repo_index==usize::MAX {"→"}else{" "}))
-        .style(if selected_repo_index==usize::MAX {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::White)})];
-    repo_list.extend(filtered_repos.iter().enumerate().map(|(i,repo)|{
-        let name = repo.file_name().unwrap().to_string_lossy();
-        let selected = selected_repo_index==i;
-        let style = if selected {Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::White)};
-        ListItem::new(format!("{} {}", if selected{'→'} else {' '}, name)).style(style)
-    }));
-    let sidebar = List::new(repo_list);
+    let mut repo_list = Vec::new();
+    // 'All' entry
+    let all_selected = selected_repo_index == usize::MAX;
+    let all_style = if all_selected {
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(Color::White)
+    };
+    repo_list.push(ListItem::new(vec![
+        Line::from(vec![Span::styled(format!("{} All", if all_selected {"→"} else {" "}), all_style)]),
+        Line::from(vec![Span::styled(format!("{} projects", filtered_repos.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))]),
+    ]));
+    // Per-repo entries (only those with commits)
+    for (i, repo) in filtered_repos.iter().enumerate() {
+        let name = repo.file_name().unwrap_or_default().to_string_lossy();
+        let selected = selected_repo_index == i;
+        let style = if selected {
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::White)
+        };
+        // Find commit count for this repo
+        let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
+        let count_style = if count > 0 {
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
+        };
+        repo_list.push(ListItem::new(vec![
+            Line::from(vec![Span::styled(format!("{} {}", if selected {'→'} else {' '}, name), style)]),
+            Line::from(vec![Span::styled(format!("{} commit{}", count, if count == 1 { "" } else { "s" }), count_style)]),
+        ]));
+    }
+    let sidebar = List::new(repo_list).highlight_symbol("→");
     let mut sidebar_state = ListState::default();
     sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+1}));
     let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
@@ -131,7 +156,7 @@ pub fn render_commits(
     // Tabs for commit list (refactored)
     let tab_titles = ["Timeframe [2]", "Selection [3]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title("Commits"))
+        .block(Block::default().borders(Borders::ALL).title("Select View"))
         .style(Style::default().white())
         .highlight_style(Style::default().yellow().bold().underlined())
         .select(selected_tab.as_index())

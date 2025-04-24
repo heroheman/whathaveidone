@@ -17,11 +17,13 @@ pub fn get_active_commits<'a>(commits: &'a CommitData, selected_repo_index: usiz
     }
 }
 
+#[allow(dead_code)]
 pub fn get_sidebar_height() -> Result<usize> {
     let (_cols, rows) = crossterm::terminal::size()?;
     Ok(rows.saturating_sub(2) as usize) // 2 lines for border
 }
 
+#[allow(dead_code)]
 pub fn get_commitlist_height() -> Result<usize> {
     let (_cols, rows) = crossterm::terminal::size()?;
     Ok(rows.saturating_sub(2 + 1 + 15) as usize) // borders + footer + detail
@@ -50,6 +52,7 @@ pub fn calculate_visible_height(f: &Frame, has_details: bool) -> u16 {
     }
 }
 
+#[allow(dead_code)]
 pub fn calculate_max_detail_scroll(
     commits: &CommitData,
     selected_repo_index: usize,
@@ -86,6 +89,7 @@ pub fn calculate_max_detail_scroll(
     Ok(0)
 }
 
+#[allow(dead_code)]
 pub fn calculate_max_scroll(content: String, view_height: u16) -> Result<u16> {
     let content_lines = content.lines().count() as u16;
     let visible_lines = view_height.saturating_sub(2);
