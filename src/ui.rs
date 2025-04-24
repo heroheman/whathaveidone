@@ -116,33 +116,42 @@ pub fn render_commits(
         Style::default().fg(Color::White)
     };
     repo_list.push(ListItem::new(vec![
-        Line::from(vec![Span::styled(format!("{} All", if all_selected {"→"} else {" "}), all_style)]),
+        Line::from(vec![Span::styled("All", all_style)]),
         Line::from(vec![Span::styled(format!("{} projects", filtered_repos.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))]),
     ]));
+    // Visual divider
+    repo_list.push(ListItem::new(Line::from(vec![Span::styled("────────────", Style::default().fg(Color::DarkGray))])));
     // Per-repo entries (only those with commits)
-    for (i, repo) in filtered_repos.iter().enumerate() {
-        let name = repo.file_name().unwrap_or_default().to_string_lossy();
-        let selected = selected_repo_index == i;
-        let style = if selected {
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::White)
-        };
-        // Find commit count for this repo
-        let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
-        let count_style = if count > 0 {
-            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
-        };
-        repo_list.push(ListItem::new(vec![
-            Line::from(vec![Span::styled(format!("{} {}", if selected {'→'} else {' '}, name), style)]),
-            Line::from(vec![Span::styled(format!("{} commit{}", count, if count == 1 { "" } else { "s" }), count_style)]),
-        ]));
+    if filtered_repos.is_empty() {
+        repo_list.push(ListItem::new(Line::from(vec![Span::styled(
+            "No projects found. Try another timeframe with <Tab>",
+            Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
+        )])));
+    } else {
+        for (i, repo) in filtered_repos.iter().enumerate() {
+            let name = repo.file_name().unwrap_or_default().to_string_lossy();
+            let selected = selected_repo_index == i;
+            let style = if selected {
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::White)
+            };
+            // Find commit count for this repo
+            let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
+            let count_style = if count > 0 {
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            } else {
+                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
+            };
+            repo_list.push(ListItem::new(vec![
+                Line::from(vec![Span::styled(name, style)]),
+                Line::from(vec![Span::styled(format!("{} commit{}", count, if count == 1 { "" } else { "s" }), count_style)]),
+            ]));
+        }
     }
     let sidebar = List::new(repo_list).highlight_symbol("→");
     let mut sidebar_state = ListState::default();
-    sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+1}));
+    sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+2}));
     let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
         .style(if focus==FocusArea::Sidebar {Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(Color::Cyan)});
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
