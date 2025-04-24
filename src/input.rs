@@ -358,6 +358,27 @@ pub fn handle_mouse(
     if let MouseEventKind::Down(_) = mouse_event.kind {
         let x = mouse_event.column as u16;
         let y = mouse_event.row as u16;
+        // Check for popup summary X button
+        {
+            let popup = popup_quote.lock().unwrap();
+            if popup.visible {
+                // Popup area is centered_rect(60,80,area)
+                // Get area from main window size
+                let area = crossterm::terminal::size().unwrap_or((120,40));
+                let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
+                let popup_area = crate::ui::centered_rect(60, 80, area);
+                // X button is in the title, right side: [X] is 3 chars, with 1 space padding
+                let x_button_x = popup_area.x + popup_area.width - 5; // [X] is at width-4, width-3, width-2
+                let x_button_y = popup_area.y; // title line
+                if y == x_button_y && x >= x_button_x && x < x_button_x + 3 {
+                    // Clicked X
+                    drop(popup); // unlock
+                    let mut popup = popup_quote.lock().unwrap();
+                    popup.visible = false;
+                    return;
+                }
+            }
+        }
         // Sidebar area: x < sidebar_area.x + sidebar_area.width
         if x >= sidebar_area.x && x < sidebar_area.x + sidebar_area.width && y >= sidebar_area.y && y < sidebar_area.y + sidebar_area.height {
             // Button box is last 3 lines of sidebar_area

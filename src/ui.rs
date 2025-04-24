@@ -404,9 +404,19 @@ pub fn render_commits(
                 "Project".to_string()
             };
             let title = format!("Summary for {} of the last {}", project, interval_label);
-            let block = Block::default().title(title).borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black));
+            // Draw X button in upper right
+            let x_button = Span::styled("[X]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+            let mut title_line = vec![Span::styled(&title, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))];
+            // Pad to right edge
+            let popup_width = popup_area.width as usize;
+            let title_width = title.len();
+            let x_button_width = 3;
+            let pad = if popup_width > title_width + x_button_width + 2 { popup_width - title_width - x_button_width - 2 } else { 1 };
+            title_line.push(Span::raw(" ".repeat(pad)));
+            title_line.push(x_button);
+            let block = Block::default().borders(Borders::ALL);
             let para = Paragraph::new(popup.text.clone())
-                .block(block)
+                .block(block.title(Line::from(title_line)))
                 .wrap(Wrap{trim:true})
                 .alignment(Alignment::Left)
                 .style(Style::default().fg(Color::White));
