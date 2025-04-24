@@ -296,9 +296,20 @@ pub fn handle_key(
                 commits=commit_str
             );
             { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
+            // Check for Gemini API key before spawning async task
+            if std::env::var("GEMINI_API_KEY").is_err() {
+                let mut p = popup_quote.lock().unwrap();
+                p.visible = true;
+                p.loading = false;
+                p.text = "Gemini API key not found. Please set the GEMINI_API_KEY environment variable.\nExample: export GEMINI_API_KEY=<YOUR API KEY>".to_string();
+                return Ok(true);
+            }
             let p2 = popup_quote.clone();
             rt.spawn(async move {
-                let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Error: {}", e));
+                let summary = match fetch_gemini_commit_summary(&prompt).await {
+                    Ok(s) => s,
+                    Err(e) => format!("Gemini error: {}", e),
+                };
                 let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
             });
         }
@@ -388,7 +399,10 @@ pub fn handle_mouse(
                 thread::spawn(move || {
                     let rt = Runtime::new().unwrap();
                     rt.block_on(async move {
-                        let summary = fetch_gemini_commit_summary(&prompt).await.unwrap_or_else(|e| format!("Error: {}", e));
+                        let summary = match fetch_gemini_commit_summary(&prompt).await {
+                            Ok(s) => s,
+                            Err(e) => format!("Gemini error: {}", e),
+                        };
                         let mut p = popup_quote.lock().unwrap(); p.text=summary; p.loading=false;
                     });
                 });

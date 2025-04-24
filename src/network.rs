@@ -1,3 +1,4 @@
+use std::error::Error;
 // use reqwest;
 // use serde_json;
 
@@ -5,9 +6,22 @@
 pub async fn fetch_gemini_commit_summary(commits: &str) -> Result<String, Box<dyn std::error::Error>> {
     let prompt = std::fs::read_to_string("prompt.txt").unwrap_or_else(|_| String::from("Summarize the following git history:"));
     let user_message = format!("{}\n\nGit-History:\n{}", prompt, commits);
-    let response = gemini_rs::chat("gemini-2.0-flash")
-        .send_message(&user_message)
-        .await?;
+    let response = match gemini_rs::chat("gemini-2.0-flash").send_message(&user_message).await {
+        Ok(r) => r,
+        Err(e) => {
+            let msg = if let Some(inner) = e.source() {
+                let s = inner.to_string();
+                if s.contains("API key must be set") || s.contains("GEMINI_API_KEY") || s.contains("401") {
+                    "Gemini API key not found. Please set the GEMINI_API_KEY environment variable.".to_string()
+                } else {
+                    format!("Gemini API error: {}", s)
+                }
+            } else {
+                format!("Gemini API error: {}", e)
+            };
+            return Ok(msg);
+        }
+    };
     let text = response.candidates
         .get(0)
         .and_then(|c| c.content.parts.get(0))
