@@ -150,6 +150,7 @@ fn main() -> anyhow::Result<()> {
                         &selected_commits,
                         &rt,
                         selected_tab,
+                        &lang, // Pass lang as &str
                     )? {
                         break;
                     }
@@ -169,6 +170,7 @@ fn main() -> anyhow::Result<()> {
                             &selected_commits,
                             sidebar_area,
                             &mut selected_tab,
+                            &lang, // Pass lang argument
                         );
                         // Mouse support for commit list tabs
                         // Calculate tab area (same as in ui.rs)

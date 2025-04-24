@@ -32,6 +32,25 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 
 2. Run the app in your commandline with `whathaveidone` or just `whid`. It will look relative from the folder you started the app. 
 
+   - To use German for the AI summary, add the `--lang de` parameter:
+     ```sh
+     whathaveidone --lang de
+     # or
+     whid --lang de
+     ```
+
+   - You can also specify the interval for commit history by providing one of these arguments:
+     - `24` (default)
+     - `48`
+     - `72`
+     - `week`
+     - `month`
+     
+     Example for 1 week in German:
+     ```sh
+     whathaveidone week --lang de
+     ```
+
 3. Use the keyboard to navigate:
    - Arrow keys: Move between projects/commits
    - `a`: Show AI summary popup

@@ -29,6 +29,7 @@ pub fn handle_key(
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     rt: &Runtime,
     selected_tab: crate::CommitTab,
+    lang: &str, // <-- add lang argument
 ) -> Result<bool> {
     match key {
         KeyCode::Char('1') => {
@@ -251,7 +252,7 @@ pub fn handle_key(
             let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
             let (project_name, commit_str) = match selected_tab {
                 crate::CommitTab::Timeframe => {
-                    if *selected_repo_index == usize::MAX {
+                    if (*selected_repo_index) == usize::MAX {
                         let all_commits = commits.iter()
                             .flat_map(|(repo, msgs)| {
                                 let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
@@ -305,8 +306,9 @@ pub fn handle_key(
                 return Ok(true);
             }
             let p2 = popup_quote.clone();
+            let lang_owned = lang.to_string();
             rt.spawn(async move {
-                let summary = match fetch_gemini_commit_summary(&prompt).await {
+                let summary = match fetch_gemini_commit_summary(&prompt, &lang_owned).await {
                     Ok(s) => s,
                     Err(e) => format!("Gemini error: {}", e),
                 };
@@ -347,6 +349,7 @@ pub fn handle_mouse(
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     sidebar_area: ratatui::prelude::Rect,
     selected_tab: &mut crate::CommitTab,
+    lang: &str, // <-- add lang argument
 ) {
     use crate::network::fetch_gemini_commit_summary;
     use std::thread;
@@ -396,10 +399,11 @@ pub fn handle_mouse(
                 );
                 { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
                 let popup_quote = popup_quote.clone();
+                let lang_owned = lang.to_string();
                 thread::spawn(move || {
                     let rt = Runtime::new().unwrap();
                     rt.block_on(async move {
-                        let summary = match fetch_gemini_commit_summary(&prompt).await {
+                        let summary = match fetch_gemini_commit_summary(&prompt, &lang_owned).await {
                             Ok(s) => s,
                             Err(e) => format!("Gemini error: {}", e),
                         };
