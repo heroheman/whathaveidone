@@ -108,6 +108,8 @@ pub fn render_commits(
     // Sidebar list (only repos with commits in the current timeframe)
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo,_)| repo).collect();
     let mut repo_list = Vec::new();
+    // Calculate total commit count for all projects
+    let total_commits: usize = data.iter().map(|(_, c)| c.len()).sum();
     // 'All' entry
     let all_selected = selected_repo_index == usize::MAX;
     let all_style = if all_selected {
@@ -116,12 +118,14 @@ pub fn render_commits(
         Style::default().fg(Color::White)
     };
     repo_list.push(ListItem::new(vec![
-        Line::from(vec![Span::styled("All", all_style)]),
-        Line::from(vec![
-            Span::styled(format!("{} projects", filtered_repos.len()), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)),
-            Span::raw("  ·  "),
-            Span::styled(interval_label, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        ]),
+        Line::from(vec![Span::styled(
+            format!("All ({} Projects)", filtered_repos.len()),
+            all_style
+        )]),
+        Line::from(vec![Span::styled(
+            format!("{} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, interval_label),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)
+        )]),
     ]));
     // Visual divider
     repo_list.push(ListItem::new(Line::from(vec![Span::styled("────────────", Style::default().fg(Color::DarkGray))])));
