@@ -79,7 +79,7 @@ pub fn render_commits(
     let bg_magenta = if dim_bg { Color::DarkGray } else { Color::Magenta };
     let bg_green = if dim_bg { Color::DarkGray } else { Color::Green };
     let bg_yellow = if dim_bg { Color::DarkGray } else { Color::Yellow };
-    let bg_red = if dim_bg { Color::DarkGray } else { Color::Red };
+    let _bg_red = if dim_bg { Color::DarkGray } else { Color::Red };
 
     // Main layout: sidebar, commits, optional detail
     let columns = if show_details && selected_commit_index.is_some() {
@@ -211,7 +211,7 @@ pub fn render_commits(
         let name = repo.file_name().unwrap().to_string_lossy();
         if filter_by_user { format!("{} (only mine) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
     } else { format!("Standup Commits – {}", interval_label) };
-    let header_style = Style::default().fg(bg_fg);
+    let _header_style = Style::default().fg(bg_fg);
 
     // Render commit list depending on active tab
     match selected_tab {

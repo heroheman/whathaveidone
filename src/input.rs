@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf, fs};
+use std::{sync::{Arc, Mutex}, time::Duration, path::PathBuf};
 use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use tokio::runtime::Runtime;
 use arboard::Clipboard;
@@ -30,6 +30,7 @@ pub fn handle_key(
     rt: &Runtime,
     selected_tab: crate::CommitTab,
     lang: &str, // <-- add lang argument
+    prompt_path: Option<&str>, // <-- add prompt_path argument
 ) -> Result<bool> {
     match key {
         KeyCode::Char('1') => {
@@ -159,7 +160,7 @@ pub fn handle_key(
             match *focus {
                 FocusArea::Sidebar => {
                     // Sidebar: Up navigation
-                    if *selected_repo_index == usize::MAX {
+                    if (*selected_repo_index) == usize::MAX {
                         // Already at ALL, do nothing
                     } else if *selected_repo_index == 0 {
                         // Move to ALL
@@ -269,7 +270,26 @@ pub fn handle_key(
         }
         KeyCode::Char('q') => return Ok(false),
         KeyCode::Char('a') | KeyCode::Char('A') => {
-            let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
+            let (prompt_template, debug_msg) = if let Some(path) = prompt_path {
+                match std::fs::read_to_string(path) {
+                    Ok(content) => (content, Some(format!("Prompt loaded from {}", path))),
+                    Err(e) => {
+                        let fallback = if lang == "de" {
+                            crate::prompts::PROMPT_DE.to_string()
+                        } else {
+                            crate::prompts::PROMPT_EN.to_string()
+                        };
+                        (fallback, Some(format!("Error loading {}: {}. Falling back to default prompt.", path, e)))
+                    }
+                }
+            } else {
+                let fallback = if lang == "de" {
+                    crate::prompts::PROMPT_DE.to_string()
+                } else {
+                    crate::prompts::PROMPT_EN.to_string()
+                };
+                (fallback, Some("".to_string()))
+            };
             let (project_name, commit_str) = match selected_tab {
                 crate::CommitTab::Timeframe => {
                     if (*selected_repo_index) == usize::MAX {
@@ -309,14 +329,29 @@ pub fn handle_key(
                 }
             };
             let interval_str = intervals[*current_index].0;
-            let prompt = format!(
-                "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
-                template=prompt_template,
-                project=project_name,
-                interval=interval_str,
-                commits=commit_str
-            );
-            { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
+            let prompt = if prompt_path.is_some() {
+                // Use the custom prompt as-is (no wrapping)
+                prompt_template.clone()
+            } else {
+                // Use the default template with variable substitution
+                format!(
+                    "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
+                    template=prompt_template,
+                    project=project_name,
+                    interval=interval_str,
+                    commits=commit_str
+                )
+            };
+            {
+                let mut p = popup_quote.lock().unwrap();
+                p.visible = true;
+                p.loading = true;
+                p.text = match (&debug_msg, prompt_path) {
+                    (Some(msg), Some(_)) => format!("{}\n\nPrompt preview:\n----------------\n{}\n\nLoading commit summary...", msg, &prompt_template.chars().take(400).collect::<String>()),
+                    (Some(msg), None) => format!("{}\n\nLoading commit summary...", msg),
+                    (None, _) => "Loading commit summary...".to_string(),
+                };
+            }
             // Check for Gemini API key before spawning async task
             if std::env::var("GEMINI_API_KEY").is_err() {
                 let mut p = popup_quote.lock().unwrap();
@@ -370,6 +405,7 @@ pub fn handle_mouse(
     sidebar_area: ratatui::prelude::Rect,
     selected_tab: &mut crate::CommitTab,
     lang: &str, // <-- add lang argument
+    prompt_path: Option<&str>, // <-- add prompt_path argument
 ) {
     use crate::network::fetch_gemini_commit_summary;
     use std::thread;
@@ -411,7 +447,21 @@ pub fn handle_mouse(
                 return;
             } else if y == button_box_start + 2 {
                 // AI Summary button
-                let prompt_template = fs::read_to_string("prompt.txt").unwrap_or_default();
+                let prompt_template = if let Some(path) = prompt_path {
+                    fs::read_to_string(path).unwrap_or_else(|_| {
+                        if lang == "de" {
+                            crate::prompts::PROMPT_DE.to_string()
+                        } else {
+                            crate::prompts::PROMPT_EN.to_string()
+                        }
+                    })
+                } else {
+                    if lang == "de" {
+                        crate::prompts::PROMPT_DE.to_string()
+                    } else {
+                        crate::prompts::PROMPT_EN.to_string()
+                    }
+                };
                 let (project_name, commit_str) = if *selected_repo_index == usize::MAX {
                     let all_commits = commits.iter()
                         .flat_map(|(repo, msgs)| {
@@ -565,7 +615,7 @@ pub fn handle_mouse(
                     if *selected_repo_index == usize::MAX {
                         // All projects: flatten
                         for (_repo, repo_commits) in commits.iter() {
-                            for (i, _commit) in repo_commits.iter().enumerate() {
+                            for (_i, _commit) in repo_commits.iter().enumerate() {
                                 if offset == list_index + *commitlist_scroll {
                                     found = Some(offset);
                                     break;

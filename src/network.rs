@@ -1,13 +1,12 @@
 use std::error::Error;
-use crate::prompts::{PROMPT_EN, PROMPT_DE};
 // use reqwest;
 // use serde_json;
 
 /// Sends the commit list and a summary prompt to Gemini, returns the summary text.
-pub async fn fetch_gemini_commit_summary(commits: &str, lang: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let prompt = if lang == "de" { PROMPT_DE } else { PROMPT_EN };
-    let user_message = format!("{}\n\nGit-History:\n{}", prompt, commits);
-    let response = match gemini_rs::chat("gemini-2.0-flash").send_message(&user_message).await {
+pub async fn fetch_gemini_commit_summary(prompt: &str, lang: &str) -> Result<String, Box<dyn std::error::Error>> {
+    // prompt is now the full template, already filled with project/interval/commits if needed
+    let user_message = prompt;
+    let response = match gemini_rs::chat("gemini-2.0-flash").send_message(user_message).await {
         Ok(r) => r,
         Err(e) => {
             let msg = if let Some(inner) = e.source() {
@@ -28,6 +27,6 @@ pub async fn fetch_gemini_commit_summary(commits: &str, lang: &str) -> Result<St
         .and_then(|c| c.content.parts.get(0))
         .and_then(|p| p.text.as_ref())
         .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "Keine Zusammenfassung erhalten.".to_string());
+        .unwrap_or_else(|| "No summary received.".to_string());
     Ok(text)
 }

@@ -41,7 +41,7 @@ impl CommitTab {
 }
 
 fn main() -> anyhow::Result<()> {
-    let (initial_interval, lang) = parse_args();
+    let (initial_interval, lang, prompt_path) = parse_args();
     let repos = find_git_repos(".")?;
 
     let intervals = vec![
@@ -150,7 +150,8 @@ fn main() -> anyhow::Result<()> {
                         &selected_commits,
                         &rt,
                         selected_tab,
-                        &lang, // Pass lang as &str
+                        &lang,
+                        prompt_path.as_deref(), // Pass prompt_path as Option<&str>
                     )? {
                         break;
                     }
@@ -170,7 +171,8 @@ fn main() -> anyhow::Result<()> {
                             &selected_commits,
                             sidebar_area,
                             &mut selected_tab,
-                            &lang, // Pass lang argument
+                            &lang,
+                            prompt_path.as_deref(), // Pass prompt_path as Option<&str>
                         );
                         // Mouse support for commit list tabs
                         // Calculate tab area (same as in ui.rs)
@@ -234,11 +236,13 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn parse_args() -> (Duration, String) {
+fn parse_args() -> (Duration, String, Option<String>) {
     let args: Vec<String> = env::args().collect();
     let mut hours = 24;
     let mut lang = "en".to_string();
-    for i in 1..args.len() {
+    let mut prompt_path: Option<String> = None;
+    let mut i = 1;
+    while i < args.len() {
         match args[i].as_str() {
             "24" | "today" => hours = 24,
             "48" | "yesterday" => hours = 48,
@@ -248,10 +252,18 @@ fn parse_args() -> (Duration, String) {
             "--lang" => {
                 if i + 1 < args.len() {
                     lang = args[i + 1].clone();
+                    i += 1;
+                }
+            },
+            "--prompt" => {
+                if i + 1 < args.len() {
+                    prompt_path = Some(args[i + 1].clone());
+                    i += 1;
                 }
             },
             _ => {}
         }
+        i += 1;
     }
-    (Duration::from_secs((hours * 3600) as u64), lang)
+    (Duration::from_secs((hours * 3600) as u64), lang, prompt_path)
 }
