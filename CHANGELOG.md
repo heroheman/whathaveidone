@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2025-04-25
+
+### 🚀 Features
+
+- Add changelog and configuration for git-cliff
+
 ## [0.3.1] - 2025-04-25
 
 ### 🚀 Features
