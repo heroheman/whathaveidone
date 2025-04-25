@@ -2,7 +2,7 @@
 
 A terminal tool to summarize your Git commit history for daily standups, using AI (Gemini API).
 
-[![asciicast](https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg)](https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq)
+<a href="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq" target="_blank"><img src="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg" /></a>
 
 ## Features
 
