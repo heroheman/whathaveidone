@@ -40,9 +40,9 @@ A terminal tool to summarize your Git commit history for daily standups, using A
      ```
 
    - You can also specify the interval for commit history by providing one of these arguments:
-     - `24` (default)
+     - `24` or `today` (default)
      - `48`
-     - `72`
+     - `72` or `yesterday`
      - `week`
      - `month`
      

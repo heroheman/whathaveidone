@@ -240,8 +240,8 @@ fn parse_args() -> (Duration, String) {
     let mut lang = "en".to_string();
     for i in 1..args.len() {
         match args[i].as_str() {
-            "24" => hours = 24,
-            "48" => hours = 48,
+            "24" | "today" => hours = 24,
+            "48" | "yesterday" => hours = 48,
             "72" => hours = 72,
             "week" => hours = 24 * 7,
             "month" => hours = 24 * 30,
