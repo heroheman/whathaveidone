@@ -1,1 +1,6 @@
 /target
+.ds_store
+/.idea
+/.vscode
+/.gradle
+.DS_store
