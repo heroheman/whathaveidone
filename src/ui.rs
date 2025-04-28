@@ -180,7 +180,7 @@ pub fn render_commits(
         .split(commit_area);
 
     // Tabs for commit list (refactored)
-    let tab_titles = ["Timeframe [2]", "Selection [3]"];
+    let tab_titles = ["Timeframe [2]", "Selection [3]", "Stats [4]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
         .block(Block::default().borders(Borders::ALL).title("Select View"))
         .style(Style::default().fg(bg_fg))
@@ -307,6 +307,29 @@ pub fn render_commits(
                         .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
                     f.render_stateful_widget(list, list_area, &mut state);
                 }
+            }
+        }
+        CommitTab::Stats => {
+            // Render a 2x2 grid of 4 boxes
+            let grid = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(list_area);
+            let top = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(grid[0]);
+            let bottom = Layout::default()
+                .direction(Direction::Horizontal)
+                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .split(grid[1]);
+            let boxes = [top[0], top[1], bottom[0], bottom[1]];
+            for (i, area) in boxes.iter().enumerate() {
+                let block = Block::default()
+                    .title(format!("Box {}", i + 1))
+                    .borders(Borders::ALL)
+                    .style(Style::default().fg(bg_cyan));
+                f.render_widget(block, *area);
             }
         }
     }

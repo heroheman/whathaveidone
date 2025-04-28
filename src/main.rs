@@ -24,17 +24,20 @@ use utils::CommitData;
 enum CommitTab {
     Timeframe,
     Selection,
+    Stats,
 }
 impl CommitTab {
     fn as_index(self) -> usize {
         match self {
             CommitTab::Timeframe => 0,
             CommitTab::Selection => 1,
+            CommitTab::Stats => 2,
         }
     }
     fn from_index(idx: usize) -> Self {
         match idx {
             1 => CommitTab::Selection,
+            2 => CommitTab::Stats,
             _ => CommitTab::Timeframe,
         }
     }
@@ -129,6 +132,7 @@ fn main() -> anyhow::Result<()> {
                     match key_event.code {
                         KeyCode::Char('2') => selected_tab = CommitTab::Timeframe,
                         KeyCode::Char('3') | KeyCode::Char('s') => selected_tab = CommitTab::Selection,
+                        KeyCode::Char('4') => selected_tab = CommitTab::Stats,
                         _ => {}
                     }
                     if !handle_key(

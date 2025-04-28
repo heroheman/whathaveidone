@@ -327,6 +327,9 @@ pub fn handle_key(
                     let commit_str = commit_lines.join("\n");
                     ("Selection".to_string(), commit_str)
                 }
+                crate::CommitTab::Stats => {
+                    ("Stats".to_string(), String::new())
+                }
             };
             let interval_str = intervals[*current_index].0;
             let prompt = if prompt_path.is_some() {
@@ -641,6 +644,9 @@ pub fn handle_mouse(
                         *selected_commit_index = Some(list_index);
                         *focus = crate::models::FocusArea::CommitList;
                     }
+                }
+                crate::CommitTab::Stats => {
+                    // Kein Commit auswählbar im Stats-Tab
                 }
             }
             return;
