@@ -274,22 +274,20 @@ pub fn handle_key(
                 match std::fs::read_to_string(path) {
                     Ok(content) => (content, Some(format!("Prompt loaded from {}", path))),
                     Err(e) => {
-                        let fallback = if lang == "de" {
-                            crate::prompts::PROMPT_DE.to_string()
-                        } else {
-                            crate::prompts::PROMPT_EN.to_string()
-                        };
+                        let fallback = String::from("Custom prompt file could not be loaded.");
                         (fallback, Some(format!("Error loading {}: {}. Falling back to default prompt.", path, e)))
                     }
                 }
             } else {
-                let fallback = if lang == "de" {
-                    crate::prompts::PROMPT_DE.to_string()
-                } else {
-                    crate::prompts::PROMPT_EN.to_string()
-                };
+                let fallback = String::from("No custom prompt file provided.");
                 (fallback, Some("".to_string()))
             };
+            // --- Gemini prompt construction update ---
+            use chrono::Local;
+            let now = Local::now();
+            let to_date = now.format("%Y-%m-%d").to_string();
+            let from_date = (now - *current_interval).format("%Y-%m-%d").to_string();
+            let interval_str = intervals[*current_index].0;
             let (project_name, commit_str) = match selected_tab {
                 crate::CommitTab::Timeframe => {
                     if (*selected_repo_index) == usize::MAX {
@@ -331,28 +329,46 @@ pub fn handle_key(
                     ("Stats".to_string(), String::new())
                 }
             };
-            let interval_str = intervals[*current_index].0;
-            let prompt = if prompt_path.is_some() {
-                // Use the custom prompt as-is (no wrapping)
-                prompt_template.clone()
+            let prompt = if let Some(path) = prompt_path {
+                match std::fs::read_to_string(path) {
+                    Ok(mut template) => {
+                        template = template.replace("{from}", &from_date);
+                        template = template.replace("{to}", &to_date);
+                        template = template.replace("{project}", &project_name);
+                        template = template.replace("{interval}", interval_str);
+                        template = template.replace("{commits}", &commit_str);
+                        template
+                    }
+                    Err(e) => {
+                        eprintln!("Error loading custom prompt '{}': {}. Falling back to default prompt.", path, e);
+                        crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str)
+                    }
+                }
             } else {
-                // Use the default template with variable substitution
-                format!(
-                    "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
-                    template=prompt_template,
-                    project=project_name,
-                    interval=interval_str,
-                    commits=commit_str
-                )
+                crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str)
             };
             {
                 let mut p = popup_quote.lock().unwrap();
                 p.visible = true;
                 p.loading = true;
                 p.text = match (&debug_msg, prompt_path) {
-                    (Some(msg), Some(_)) => format!("{}\n\nPrompt preview:\n----------------\n{}\n\nLoading commit summary...", msg, &prompt_template.chars().take(400).collect::<String>()),
-                    (Some(msg), None) => format!("{}\n\nLoading commit summary...", msg),
-                    (None, _) => "Loading commit summary...".to_string(),
+                    (Some(msg), Some(_)) | (Some(msg), None) => format!(
+                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ncommits: [length: {} chars]\n\nLoading commit summary...",
+                        commit_str.len(),
+                        msg=msg,
+                        from=from_date,
+                        to=to_date,
+                        project=project_name,
+                        lang=lang
+                    ),
+                    (None, _) => format!(
+                        "Prompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ncommits: [length: {} chars]\n\nLoading commit summary...",
+                        commit_str.len(),
+                        from=from_date,
+                        to=to_date,
+                        project=project_name,
+                        lang=lang
+                    ),
                 };
             }
             // Check for Gemini API key before spawning async task
@@ -452,18 +468,10 @@ pub fn handle_mouse(
                 // AI Summary button
                 let prompt_template = if let Some(path) = prompt_path {
                     fs::read_to_string(path).unwrap_or_else(|_| {
-                        if lang == "de" {
-                            crate::prompts::PROMPT_DE.to_string()
-                        } else {
-                            crate::prompts::PROMPT_EN.to_string()
-                        }
+                        String::from("No custom prompt file provided.")
                     })
                 } else {
-                    if lang == "de" {
-                        crate::prompts::PROMPT_DE.to_string()
-                    } else {
-                        crate::prompts::PROMPT_EN.to_string()
-                    }
+                    String::from("No custom prompt file provided.")
                 };
                 let (project_name, commit_str) = if *selected_repo_index == usize::MAX {
                     let all_commits = commits.iter()
