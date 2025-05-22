@@ -8,7 +8,6 @@ use crate::git::reload_commits;
 use crate::utils::{get_active_commits, CommitData};
 use anyhow::Result;
 use crate::models::SelectedCommits;
-use crate::network::fetch_gemini_commit_summary;
 
 pub fn handle_key(
     key: KeyCode,
@@ -276,7 +275,7 @@ pub fn handle_key(
         }
         KeyCode::Char('q') => return Ok(false),
         KeyCode::Char('a') | KeyCode::Char('A') => {
-            let (prompt_template, debug_msg) = if let Some(path) = prompt_path {
+            let (_prompt_template, debug_msg) = if let Some(path) = prompt_path {
                 match std::fs::read_to_string(path) {
                     Ok(content) => (content, Some(format!("Prompt loaded from {}", path))),
                     Err(e) => {
@@ -463,7 +462,6 @@ pub fn handle_mouse(
     prompt_path: Option<&str>, // <-- add prompt_path argument
     gemini_model: &str, // <-- add gemini_model argument
 ) {
-    use crate::network::fetch_gemini_commit_summary;
     use std::thread;
     use tokio::runtime::Runtime;
     use std::fs;
@@ -543,7 +541,7 @@ pub fn handle_mouse(
                 thread::spawn(move || {
                     let rt = Runtime::new().unwrap();
                     rt.block_on(async move {
-                        let summary = match fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model).await {
+                        let summary = match crate::network::fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model).await {
                             Ok(s) => s,
                             Err(e) => format!("Gemini error: {}", e),
                         };

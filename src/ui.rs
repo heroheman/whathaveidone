@@ -276,7 +276,7 @@ pub fn render_commits(
                 let pos = selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
                 let mut sb = ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
-            } else if let Some((repo, commits)) = data.get(selected_repo_index) {
+            } else if let Some((_repo, commits)) = data.get(selected_repo_index) {
                 let items: Vec<ListItem> = commits.iter().enumerate().map(|(i, commit)|{
                     let sel=Some(i)==selected_commit_index;
                     let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
