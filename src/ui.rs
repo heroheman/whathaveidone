@@ -238,7 +238,7 @@ pub fn render_commits(
                 for (repo, commits) in data {
                     // Add project title as a styled Line (not as a string)
                     items.push(ListItem::new(Line::from(vec![Span::styled(
-                        repo.file_name().unwrap_or_default().to_string_lossy(),
+                        format!("\u{1F5C3}  {}", repo.file_name().unwrap_or_default().to_string_lossy()),
                         Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
                     )])));
                     for (i,commit) in commits.iter().enumerate() {
@@ -315,8 +315,10 @@ pub fn render_commits(
                     }
                     let mut items = Vec::new();
                     for (repo, commits) in repo_to_commits.iter() {
-                        items.push(ListItem::new(format!("### {}", repo.file_name().unwrap().to_string_lossy()))
-                            .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+                        items.push(ListItem::new(Line::from(vec![Span::styled(
+                            format!("\u{1F5C3}  {}", repo.file_name().unwrap().to_string_lossy()),
+                            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                        )])));
                         for commit in commits.iter() {
                             let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
                             let indicator = format!("{}  ", star);
@@ -333,7 +335,7 @@ pub fn render_commits(
             }
         }
         CommitTab::Stats => {
-            // Render a 2x2 grid of 4 boxes
+            // Render a 2x2 grid of 4 boxes with icons and color
             let grid = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -347,11 +349,14 @@ pub fn render_commits(
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(grid[1]);
             let boxes = [top[0], top[1], bottom[0], bottom[1]];
+            let icons = ["\u{1F4C8}", "\u{1F465}", "\u{1F4C6}", "\u{1F4CB}"]; // 📈 👥 📆 📋
+            let titles = ["Commits", "Authors", "Days", "Summary"];
+            let colors = [Color::Green, Color::Cyan, Color::Yellow, Color::Magenta];
             for (i, area) in boxes.iter().enumerate() {
                 let block = Block::default()
-                    .title(format!("Box {}", i + 1))
+                    .title(format!("{}  {}", icons[i], titles[i]))
                     .borders(Borders::ALL)
-                    .style(Style::default().fg(bg_cyan));
+                    .style(Style::default().fg(colors[i]));
                 f.render_widget(block, *area);
             }
         }
