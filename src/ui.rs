@@ -470,41 +470,124 @@ pub fn render_commits(
     } 
 
     // footer
-    let footer = Paragraph::new("<?> - show shortcuts")
-        .block(Block::default().borders(Borders::ALL))
-        .style(Style::default().fg(if dim_bg { Color::DarkGray } else { Color::Gray }).add_modifier(Modifier::DIM));
+    let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
+    let detail_label = if detailed_commit_view {"d: Details ON"} else {"d: Details OFF"};
+    let footer = Paragraph::new(format!(
+        "Tab/Shift+Tab Timeframe | ↑/↓/ or h/j/k/l Navigation | <Space> Details |  m Mark | s Show Marked | a AI summary | {} | {} | Q Quit",
+        filter_label, detail_label
+    ))
+    .block(Block::default().borders(Borders::ALL))
+    .style(Style::default().fg(if dim_bg { Color::DarkGray } else { Color::Gray }).add_modifier(Modifier::DIM));
     f.render_widget(footer, vertical_chunks[1]);
 
     // popup
     if let Some(arc) = popup_quote {
         let popup = arc.lock().unwrap();
-        if popup.shortcuts_visible {
-            // Shortcuts popup
+        if popup.visible {
+            // Dim the background
             let area = f.area();
-            let popup_area = centered_rect(40, 40, area);
+            let dim_block = Block::default().style(Style::default().bg(Color::Rgb(30, 30, 30)).fg(Color::Reset));
+            f.render_widget(dim_block, area);
+            // Centered popup area
+            let popup_area = centered_rect(60, 80, f.area());
             f.render_widget(Clear, popup_area);
-            let shortcuts = vec![
-                "Tab/Shift+Tab: Change timeframe",
-                "↑/↓/h/j/k/l: Navigation",
-                "<Space>: Toggle details",
-                "d: Toggle commit body",
-                "m: Mark commit",
-                "s: Show marked",
-                "a: AI summary",
-                "A: AI summary (marked)",
-                "u: Toggle user filter",
-                "q: Quit",
-                "Esc: Close popup",
+
+            // Header: icon, project, interval
+            let project = if selected_repo_index == usize::MAX {
+                "All projects".to_string()
+            } else if let Some((repo, _)) = data.get(selected_repo_index) {
+                repo.file_name().unwrap_or_default().to_string_lossy().to_string()
+            } else {
+                "Project".to_string()
+            };
+            let title = format!("\u{1F916}  AI Summary for {}", project);
+            let interval = format!("Interval: {}", interval_label);
+            let x_button = Span::styled("[X]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
+            let mut title_line = vec![
+                Span::styled(&title, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw("  "),
+                Span::styled(&interval, Style::default().fg(Color::Yellow)),
             ];
-            let lines: Vec<Line> = shortcuts.iter().map(|s| Line::from(Span::raw(*s))).collect();
-            let para = Paragraph::new(lines)
-                .block(Block::default().title("Shortcuts").borders(Borders::ALL).style(Style::default().bg(Color::Black)))
+            // Pad to right edge
+            let popup_width = popup_area.width as usize;
+            let title_width = title.len() + interval.len() + 2;
+            let x_button_width = 3;
+            let pad = if popup_width > title_width + x_button_width + 2 { popup_width - title_width - x_button_width - 2 } else { 1 };
+            title_line.push(Span::raw(" ".repeat(pad)));
+            title_line.push(x_button);
+
+            // Block for popup
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Black))
+                .title(Line::from(title_line));
+
+            let scroll = popup.scroll;
+            let text_line_count = popup.text.lines().count() as u16;
+
+            // Loading spinner/animation
+            let spinner = if popup.loading {
+                let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                let frame = frames[((scroll as usize) / 2) % frames.len()];
+                format!("{} ", frame)
+            } else {
+                String::new()
+            };
+
+            // Content: always show popup.text (which includes variables if loading)
+            let padded_text = if popup.loading {
+                // Show spinner above the text
+                format!(
+                    "\n   {}Loading...\n\n{}\n",
+                    spinner,
+                    popup.text
+                        .lines()
+                        .map(|line| format!("  {}  ", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            } else {
+                format!(
+                    "\n{}\n",
+                    popup.text
+                        .lines()
+                        .map(|line| format!("  {}  ", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            };
+
+            let para = Paragraph::new(padded_text)
+                .block(block)
+                .wrap(Wrap { trim: true })
                 .alignment(Alignment::Left)
+                .scroll((scroll, 0))
                 .style(Style::default().fg(Color::White));
             f.render_widget(para, popup_area);
-            return;
+
+            // Draw a vertical scrollbar inside the popup
+            let scrollbar_area = Rect {
+                x: popup_area.x + popup_area.width - 1,
+                y: popup_area.y + 1,
+                width: 1,
+                height: popup_area.height.saturating_sub(2),
+            };
+            let mut sb = ScrollbarState::default()
+                .position(scroll as usize)
+                .content_length(text_line_count as usize);
+            f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), scrollbar_area, &mut sb);
+
+            // Footer visually separated
+            let footer_area = Rect {
+                x: popup_area.x,
+                y: popup_area.y + popup_area.height,
+                width: popup_area.width,
+                height: 1,
+            };
+            let footer = Paragraph::new("Press c to copy | ↑/↓ scroll | Esc close")
+                .style(Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC));
+            f.render_widget(footer, footer_area);
         }
-        // ...existing code for other popups...
     }
 
     if let Some(selected_commits) = selected_commits {

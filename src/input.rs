@@ -240,18 +240,8 @@ pub fn handle_key(
                 }
             }
         }
-        KeyCode::Char('?') => {
-            let mut popup = popup_quote.lock().unwrap();
-            if popup.shortcuts_visible {
-                popup.shortcuts_visible = false;
-            } else {
-                popup.shortcuts_visible = true;
-                popup.visible = false; // Hide other popups if open
-            }
-            return Ok(true);
-        }
-        KeyCode::Char('h') => {
-            // vim 'h' as focus backward
+        KeyCode::Char('h') | KeyCode::Left => {
+            // vim 'h' or Left Arrow as focus backward
             *focus = match *focus {
                 FocusArea::Sidebar => {
                     if *show_details { FocusArea::Detail } else { FocusArea::CommitList }
@@ -260,8 +250,8 @@ pub fn handle_key(
                 FocusArea::Detail => FocusArea::CommitList,
             };
         }
-        KeyCode::Char('l') => {
-            // vim 'l' as focus forward
+        KeyCode::Char('l') | KeyCode::Right => {
+            // vim 'l' or Right Arrow as focus forward
             *focus = match *focus {
                 FocusArea::Sidebar => FocusArea::CommitList,
                 FocusArea::CommitList => {
