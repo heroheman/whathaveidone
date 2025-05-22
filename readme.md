@@ -45,6 +45,18 @@ whathaveidone
 whid
 ```
 
+### Gemini model selection
+You can select the Gemini model version with the `--gemini <model>` parameter. The default is `gemini-2.0-flash`.
+
+Example:
+```sh
+whathaveidone --gemini gemini-1.5-pro
+#or 
+whathaveidone --gemini gemini-2.5-flash-preview-05-20
+
+```
+The selected model will be shown in the summary popup while waiting for the AI response. 
+
 ### Language selection
 To use a specific language for the AI summary, add the `--lang <language>` parameter:
 ```sh

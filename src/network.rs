@@ -2,11 +2,10 @@ use std::error::Error;
 // use reqwest;
 // use serde_json;
 
-/// Sends the commit list and a summary prompt to Gemini, returns the summary text.
-pub async fn fetch_gemini_commit_summary(prompt: &str, _lang: &str) -> Result<String, Box<dyn std::error::Error>> {
-    // prompt is now the full template, already filled with project/interval/commits if needed
+/// Sends the commit list and a summary prompt to Gemini using the specified model, returns the summary text.
+pub async fn fetch_gemini_commit_summary(prompt: &str, _lang: &str, model: &str) -> Result<String, Box<dyn std::error::Error>> {
     let user_message = prompt;
-    let response = match gemini_rs::chat("gemini-2.0-flash").send_message(user_message).await {
+    let response = match gemini_rs::chat(model).send_message(user_message).await {
         Ok(r) => r,
         Err(e) => {
             let msg = if let Some(inner) = e.source() {

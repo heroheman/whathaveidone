@@ -31,6 +31,7 @@ pub fn handle_key(
     selected_tab: crate::CommitTab,
     lang: &str, // <-- add lang argument
     prompt_path: Option<&str>, // <-- add prompt_path argument
+    gemini_model: &str, // <-- add gemini_model argument
 ) -> Result<bool> {
     let lang = if lang.is_empty() { "english" } else { lang };
     match key {
@@ -356,21 +357,23 @@ pub fn handle_key(
                 p.loading = true;
                 p.text = match (&debug_msg, prompt_path) {
                     (Some(msg), Some(_)) | (Some(msg), None) => format!(
-                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ncommits: [length: {} chars]\n\nLoading commit summary...",
+                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [length: {} chars]\n\nLoading commit summary...",
                         commit_str.len(),
                         msg=msg,
                         from=from_date,
                         to=to_date,
                         project=project_name,
-                        lang=lang
+                        lang=lang,
+                        gemini_model=gemini_model
                     ),
                     (None, _) => format!(
-                        "Prompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ncommits: [length: {} chars]\n\nLoading commit summary...",
+                        "Prompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [length: {} chars]\n\nLoading commit summary...",
                         commit_str.len(),
                         from=from_date,
                         to=to_date,
                         project=project_name,
-                        lang=lang
+                        lang=lang,
+                        gemini_model=gemini_model
                     ),
                 };
             }
@@ -384,8 +387,9 @@ pub fn handle_key(
             }
             let p2 = popup_quote.clone();
             let lang_owned = lang.to_string();
+            let gemini_model = gemini_model.to_string();
             rt.spawn(async move {
-                let summary = match fetch_gemini_commit_summary(&prompt, &lang_owned).await {
+                let summary = match crate::network::fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model).await {
                     Ok(s) => s,
                     Err(e) => format!("Gemini error: {}", e),
                 };
@@ -428,6 +432,7 @@ pub fn handle_mouse(
     selected_tab: &mut crate::CommitTab,
     lang: &str, // <-- add lang argument
     prompt_path: Option<&str>, // <-- add prompt_path argument
+    gemini_model: &str, // <-- add gemini_model argument
 ) {
     use crate::network::fetch_gemini_commit_summary;
     use std::thread;
@@ -502,13 +507,14 @@ pub fn handle_mouse(
                     interval=interval_label,
                     commits=commit_str
                 );
-                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text="Loading commit summary...".into(); }
+                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text=format!("Gemini model: {model}\n\nLoading commit summary...", model=gemini_model); }
                 let popup_quote = popup_quote.clone();
                 let lang_owned = lang.to_string();
+                let gemini_model = gemini_model.to_string();
                 thread::spawn(move || {
                     let rt = Runtime::new().unwrap();
                     rt.block_on(async move {
-                        let summary = match fetch_gemini_commit_summary(&prompt, &lang_owned).await {
+                        let summary = match fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model).await {
                             Ok(s) => s,
                             Err(e) => format!("Gemini error: {}", e),
                         };

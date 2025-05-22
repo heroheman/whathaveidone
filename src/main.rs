@@ -44,7 +44,7 @@ impl CommitTab {
 }
 
 fn main() -> anyhow::Result<()> {
-    let (initial_interval, lang, prompt_path) = parse_args();
+    let (initial_interval, lang, prompt_path, gemini_model) = parse_args();
     let repos = find_git_repos(".")?;
 
     let intervals = vec![
@@ -129,13 +129,7 @@ fn main() -> anyhow::Result<()> {
         if event::poll(poll_timeout)? {
             match event::read()? {
                 Event::Key(key_event) => {
-                    match key_event.code {
-                        KeyCode::Char('2') => selected_tab = CommitTab::Timeframe,
-                        KeyCode::Char('3') | KeyCode::Char('s') => selected_tab = CommitTab::Selection,
-                        KeyCode::Char('4') => selected_tab = CommitTab::Stats,
-                        _ => {}
-                    }
-                    if !handle_key(
+                    let handled = handle_key(
                         key_event.code,
                         &intervals,
                         &mut current_index,
@@ -155,8 +149,10 @@ fn main() -> anyhow::Result<()> {
                         &rt,
                         selected_tab,
                         &lang,
-                        prompt_path.as_deref(), // Pass prompt_path as Option<&str>
-                    )? {
+                        prompt_path.as_deref(),
+                        &gemini_model,
+                    )?;
+                    if !handled {
                         break;
                     }
                 }
@@ -176,7 +172,8 @@ fn main() -> anyhow::Result<()> {
                             sidebar_area,
                             &mut selected_tab,
                             &lang,
-                            prompt_path.as_deref(), // Pass prompt_path as Option<&str>
+                            prompt_path.as_deref(),
+                            &gemini_model, // <-- add this argument
                         );
                         // Mouse support for commit list tabs
                         // Calculate tab area (same as in ui.rs)
@@ -240,11 +237,12 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn parse_args() -> (Duration, String, Option<String>) {
+fn parse_args() -> (Duration, String, Option<String>, String) {
     let args: Vec<String> = env::args().collect();
     let mut hours = 24;
     let mut lang = "en".to_string();
     let mut prompt_path: Option<String> = None;
+    let mut gemini_model = "gemini-2.0-flash".to_string();
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -265,9 +263,15 @@ fn parse_args() -> (Duration, String, Option<String>) {
                     i += 1;
                 }
             },
+            "--gemini" => {
+                if i + 1 < args.len() {
+                    gemini_model = args[i + 1].clone();
+                    i += 1;
+                }
+            },
             _ => {}
         }
         i += 1;
     }
-    (Duration::from_secs((hours * 3600) as u64), lang, prompt_path)
+    (Duration::from_secs((hours * 3600) as u64), lang, prompt_path, gemini_model)
 }
