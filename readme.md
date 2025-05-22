@@ -4,83 +4,101 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 
 <a href="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq" target="_blank"><img src="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg" /></a>
 
-## Features
+---
 
+## Features
 - Summarizes Git commit history for one or more projects
 - Groups changes by day and topic
 - Supports multiple repositories
-- Customizable summary prompt (see below for custom prompt usage)
+- Customizable summary prompt
 - Copy summary to clipboard with one keypress
-- **Mark commits with m, view all marked with S**
+- Mark commits with `m`, view all marked with `s`
+
+---
 
 ## Installation
 
 ### Prerequisites
-
 - [Rust](https://rustup.rs/) (for building)
 - A [Gemini API key](https://aistudio.google.com/app/apikey)
 
 ### Build & Install
+```sh
+cargo install whathaveidone
+```
 
-- `cargo install whathaveidone`
+### Set up your Gemini API key
+You must set your Gemini API key before running the app:
+```sh
+export GEMINI_API_KEY=your-key-here
+```
+Add this line to your shell profile (e.g. `~/.zshrc`) to make it persistent across terminal sessions.
 
+---
 
 ## Usage
 
-1. Set your Gemini API key:
-   ```sh
-   export GEMINI_API_KEY=your-key-here
-   ```
+Run the app in your terminal:
+```sh
+whathaveidone
+# or
+whid
+```
 
-2. Run the app in your commandline with `whathaveidone` or just `whid`. It will look relative from the folder you started the app. 
+### Language selection
+To use a specific language for the AI summary, add the `--lang <language>` parameter:
+```sh
+whathaveidone --lang german      # German
+whid --lang english              # English (default)
+```
+**Note:** The translation is performed by Gemini itself.
 
-   - To use a specific language for the AI summary, add the `--lang <language>` parameter (e.g. `--lang german` for German, `--lang english` for English). If not specified, the default is `english`.
-   - **Note**: the translation is made by gemini itself
-     ```sh
-     whathaveidone --lang de
-     # or
-     whid --lang english
-     ```
+### Time interval selection
+Use `TAB` or `SHIFT-TAB` for interval selection. 
 
-   - You can also specify the interval for commit history by providing one of these arguments:
-     - `24` or `today` (default)
-     - `48`
-     - `72` or `yesterday`
-     - `week`
-     - `month`
-     
-     Example for 1 week in German:
-     ```sh
-     whathaveidone week --lang de
-     ```
+Alternativly: You can specify the start interval for commit history as parameter:
+- `24` or `today` (default)
+- `48`
+- `72` or `yesterday`
+- `week`
+- `month`
 
-   - **Custom prompt:**
-     You can provide a custom prompt template file using the `--prompt <filename.txt>` option (relative or absolute path). If this option is used, the file content will be sent as the prompt to the AI (no default wrapping or formatting). You can use the following placeholders in your template, which will be replaced accordingly:
+Example for 1 week in German:
+```sh
+whathaveidone yesterday
+# or
+whathaveidone 48
+# or
+whathaveidone week --lang german
+```
 
-     - `{from}`: Start date of the selected interval (format: YYYY-MM-DD)
-     - `{to}`: End date of the selected interval (format: YYYY-MM-DD)
-     - `{project}`: Name of the selected project
-     - `{projectname}`: Alias for `{project}`
-     - `{interval}`: The selected interval label (e.g. "week", "24h")
-     - `{lang}`: The language parameter (e.g. "de", "english")
-     - `{commits}`: The commit data to be summarized
+### Custom prompt
+You can provide a custom prompt template file using the `--prompt <filename.txt>` option. Placeholders in your template will be replaced automatically:
+- `{from}`: Start date (YYYY-MM-DD)
+- `{to}`: End date (YYYY-MM-DD)
+- `{project}` or `{projectname}`: Project name
+- `{interval}`: Interval label (e.g. "week")
+- `{lang}`: Language (e.g. "german", "english")
+- `{commits}`: Commit data to be summarized
 
-     Example:
-     ```sh
-     whathaveidone --prompt myprompt.txt
-     ```
-     If the file cannot be loaded, the default prompt will be used.
+Example:
+```sh
+whathaveidone --prompt myprompt.txt
+```
+If the file cannot be loaded, the default prompt will be used.
 
-3. Use the keyboard to navigate:
-   - Arrow keys: Move between projects/commits
-   - `a`: Show AI summary popup
-   - `c`: Copy summary to clipboard
-   - `m`: Mark/unmark commit
-   - `s`: Show popup with all marked commits
-   - `A`: Show AI summary popup
-   - `Q`: Quit
+---
 
+## Keyboard Shortcuts
+- Arrow keys: Move between projects/commits
+- `a` or `A`: Show AI summary popup
+- `c`: Copy summary to clipboard
+- `m`: Mark/unmark commit
+- `s`: Show popup with all marked commits
+- `Q`: Quit
+
+---
 
 ## Links
-- [Whathaveidone](https://crates.io/crates/whathaveidone) on Crates
-- [Whathaveidone](https://github.com/heroheman/whathaveidone) on Github
+- [whathaveidone on Crates.io](https://crates.io/crates/whathaveidone)
+- [whathaveidone on GitHub](https://github.com/heroheman/whathaveidone)
