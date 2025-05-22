@@ -2,11 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2025-05-22
+
+### 🚀 Features
+
+- Enhance prompt handling and formatting for commit summaries
+- Enhance language support and prompt template placeholders
+- Improve git repository detection and UI commit rendering
+- Refactor commit view tabs for improved clarity
+- Enhance commit view with icons and improved styling
+- Enhance selected commits display with icon and improved styling
+- Update README for improved clarity and structure
+- Add Gemini model selection and update commit summary handling
+- Add detailed commit view toggle and enhance commit rendering
+- Enhance popup rendering with loading spinner and improved layout
+- Add shortcuts visibility toggle and update popup handling
+- Update key handling and popup rendering
+- Add loading spinner to popup during commit summary fetch
+
+### 🐛 Bug Fixes
+
+- Update asciicast link format in README for better compatibility
+- Update handle_key and handle_mouse functions with new arguments
+
+### ⚙️ Miscellaneous Tasks
+
+- Update after gitignore change
+
 ## [0.3.2] - 2025-04-25
 
 ### 🚀 Features
 
 - Add changelog and configuration for git-cliff
+- Update changelog for version 0.3.2
+
+### ⚙️ Miscellaneous Tasks
+
+- Release whathaveidone version 0.3.2
 
 ## [0.3.1] - 2025-04-25
 
