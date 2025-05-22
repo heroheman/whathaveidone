@@ -5,6 +5,12 @@ use std::sync::OnceLock;
 
 pub fn find_git_repos(start_dir: &str) -> Result<Vec<PathBuf>> {
     let mut repos = vec![];
+    let start_path = PathBuf::from(start_dir);
+    if start_path.join(".git").exists() {
+        repos.push(start_path.clone());
+        // Do not recurse into subdirs if the start_dir is a git repo itself (common convention)
+        return Ok(repos);
+    }
     for entry in fs::read_dir(start_dir)? {
         let entry = entry?;
         let path = entry.path();

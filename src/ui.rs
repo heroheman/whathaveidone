@@ -146,14 +146,25 @@ pub fn render_commits(
         )])));
     } else {
         for (i, repo) in filtered_repos.iter().enumerate() {
-            let name = repo.file_name().unwrap_or_default().to_string_lossy();
+            // Always show project title as section header, even for single repo
+            let name = if let Some(fname) = repo.file_name() {
+                fname.to_string_lossy()
+            } else if let Some(parent) = repo.parent() {
+                // fallback: show last path component if file_name is empty (e.g. current dir)
+                parent.file_name().unwrap_or_default().to_string_lossy()
+            } else {
+                repo.to_string_lossy()
+            };
+            repo_list.push(ListItem::new(Line::from(vec![Span::styled(
+                name,
+                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+            )])));
             let selected = selected_repo_index == i;
             let style = if selected {
                 Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(bg_fg)
             };
-            // Find commit count for this repo
             let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
             let count_style = if count > 0 {
                 Style::default().fg(bg_green).add_modifier(Modifier::BOLD)
@@ -161,7 +172,6 @@ pub fn render_commits(
                 Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
             };
             repo_list.push(ListItem::new(vec![
-                Line::from(vec![Span::styled(name, style)]),
                 Line::from(vec![Span::styled(format!("{} commit{}", count, if count == 1 { "" } else { "s" }), count_style)]),
             ]));
         }
@@ -208,7 +218,7 @@ pub fn render_commits(
         if filter_by_user { format!("Standup Commits (only mine) – {}", interval_label) }
         else { format!("Standup Commits – {}", interval_label) }
     } else if let Some((repo,_)) = data.get(selected_repo_index) {
-        let name = repo.file_name().unwrap().to_string_lossy();
+        let name = repo.file_name().unwrap_or_default().to_string_lossy();
         if filter_by_user { format!("{} (only mine) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
     } else { format!("Standup Commits – {}", interval_label) };
     let _header_style = Style::default().fg(bg_fg);
@@ -216,13 +226,15 @@ pub fn render_commits(
     // Render commit list depending on active tab
     match selected_tab {
         CommitTab::Timeframe => {
-            // Flatten commits for 'All'
             if selected_repo_index==usize::MAX {
                 let mut items = Vec::new();
                 let mut offset=0;
                 for (repo, commits) in data {
-                    items.push(ListItem::new(format!("### {}", repo.file_name().unwrap().to_string_lossy()))
-                        .style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)));
+                    // Add project title as a styled Line (not as a string)
+                    items.push(ListItem::new(Line::from(vec![Span::styled(
+                        repo.file_name().unwrap_or_default().to_string_lossy(),
+                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                    )])));
                     for (i,commit) in commits.iter().enumerate() {
                         let idx=offset+i;
                         let sel = Some(idx)==selected_commit_index;
@@ -244,27 +256,32 @@ pub fn render_commits(
                 let pos = selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
                 let mut sb = ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
+            } else if let Some((_, commits)) = data.get(selected_repo_index) {
+                let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
+                    let sel=Some(i)==selected_commit_index;
+                    let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                    let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
+                    let style=if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
+                    let line = render_commit_line(commit, indicator, sel);
+                    ListItem::new(line).style(style)
+                }).collect();
+                let mut state=ListState::default(); state.select(selected_commit_index);
+                let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
+                    .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
+                f.render_stateful_widget(list, list_area, &mut state);
+                // scrollbar
+                let total=commits.len();
+                let visible=commit_area.height.saturating_sub(2) as usize;
+                let pos=selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
+                let mut sb=ScrollbarState::default().position(pos).content_length(total);
+                f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
             } else {
-                if let Some((_, commits)) = data.get(selected_repo_index) {
-                    let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
-                        let sel=Some(i)==selected_commit_index;
-                        let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
-                        let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        let style=if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                        let line = render_commit_line(commit, indicator, sel);
-                        ListItem::new(line).style(style)
-                    }).collect();
-                    let mut state=ListState::default(); state.select(selected_commit_index);
-                    let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-                        .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
-                    f.render_stateful_widget(list, list_area, &mut state);
-                    // scrollbar
-                    let total=commits.len();
-                    let visible=commit_area.height.saturating_sub(2) as usize;
-                    let pos=selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
-                    let mut sb=ScrollbarState::default().position(pos).content_length(total);
-                    f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
-                }
+                // No repo at selected_repo_index, show placeholder
+                let placeholder = Paragraph::new("No commits found.")
+                    .block(Block::default().title(header).borders(Borders::ALL))
+                    .alignment(Alignment::Center)
+                    .style(Style::default().fg(bg_fg));
+                f.render_widget(placeholder, list_area);
             }
         },
         CommitTab::Selection => {
@@ -338,30 +355,28 @@ pub fn render_commits(
     if let Some(detail_chunk) = detail_area {
         if show_details {
             if let Some(sel_idx) = selected_commit_index {
-                // Determine repo and commit line: global vs per-repo
                 let (repo_path, commit_line) = {
                     if selected_repo_index == usize::MAX {
-                        // 'All' view: find mapping by global index
                         let mut offset = 0;
                         let mut found: Option<(PathBuf, String)> = None;
                         for (repo, repo_commits) in data {
                             if sel_idx < offset + repo_commits.len() {
-                                found = Some((repo.clone(), repo_commits[sel_idx - offset].clone()));
+                                found = Some((repo.clone(), repo_commits.get(sel_idx - offset).cloned().unwrap_or_default()));
                                 break;
                             }
                             offset += repo_commits.len();
                         }
                         found.unwrap_or_else(|| {
-                            // fallback to first available commit
                             if let Some((r, commits_vec)) = data.first() {
                                 (r.clone(), commits_vec.first().cloned().unwrap_or_default())
                             } else {
                                 (PathBuf::new(), String::new())
                             }
                         })
+                    } else if let Some((r, commits_vec)) = data.get(selected_repo_index) {
+                        (r.clone(), commits_vec.get(sel_idx).cloned().unwrap_or_default())
                     } else {
-                        let (r, commits_vec) = &data[selected_repo_index];
-                        (r.clone(), commits_vec[sel_idx].clone())
+                        (PathBuf::new(), String::new())
                     }
                 };
                 let hash = commit_line.split_whitespace().next().unwrap_or("");
