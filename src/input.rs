@@ -240,6 +240,16 @@ pub fn handle_key(
                 }
             }
         }
+        KeyCode::Char('?') => {
+            let mut popup = popup_quote.lock().unwrap();
+            if popup.shortcuts_visible {
+                popup.shortcuts_visible = false;
+            } else {
+                popup.shortcuts_visible = true;
+                popup.visible = false; // Hide other popups if open
+            }
+            return Ok(true);
+        }
         KeyCode::Char('h') => {
             // vim 'h' as focus backward
             *focus = match *focus {

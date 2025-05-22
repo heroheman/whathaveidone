@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
     let mut commitlist_scroll = 0;
     let mut detail_scroll = 0;
 
-    let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false, scroll: 0 }));
+    let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false, scroll: 0, shortcuts_visible: false }));
     let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: HashSet::new(), popup_visible: false }));
 
     let rt = Runtime::new()?;

@@ -15,6 +15,7 @@ pub struct PopupQuote {
     pub text: String,
     pub loading: bool,
     pub scroll: u16, // scroll offset for popup summary
+    pub shortcuts_visible: bool, // show shortcuts popup
 }
 
 /// State for selected/marked commits.
