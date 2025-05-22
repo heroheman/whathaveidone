@@ -99,10 +99,18 @@ whathaveidone --prompt myprompt.txt
 ```
 If the file cannot be loaded, the default prompt will be used.
 
+### Detailed commit view ("git log" style)
+
+You can toggle a detailed, multi-line commit log view (similar to `git log --format` output) by pressing the `d` key in the commit list. This view shows the full commit message body and author for each commit, formatted in a pretty-printed, multi-line style.
+
+**Note:** The detailed view is only recommended for smaller datasets (shorter timeframes or a single project). For large repositories or long timeframes, the output may be too large for the AI model to summarize effectively.
+
 ---
 
 ## Keyboard Shortcuts
-- Arrow keys: Move between projects/commits
+- Arrow keys / h j k l: Move between projects/commits
+- `Tab` / `Shift+Tab`: Change time interval
+- `d`: Toggle detailed commit view (multi-line, git log style)
 - `a` or `A`: Show AI summary popup
 - `c`: Copy summary to clipboard
 - `m`: Mark/unmark commit

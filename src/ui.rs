@@ -65,6 +65,7 @@ pub fn render_commits(
     popup_quote: Option<&Arc<Mutex<PopupQuote>>>,
     selected_commits: Option<&Arc<Mutex<SelectedCommits>>>,
     selected_tab: CommitTab,
+    detailed_commit_view: bool, // <-- new argument
 ) {
     let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
     let area = f.area();
@@ -236,21 +237,34 @@ pub fn render_commits(
                 let mut items = Vec::new();
                 let mut offset=0;
                 for (repo, commits) in data {
-                    // Add project title as a styled Line (not as a string)
                     items.push(ListItem::new(Line::from(vec![Span::styled(
                         format!("\u{1F5C3}  {}", repo.file_name().unwrap_or_default().to_string_lossy()),
                         Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
                     )])));
-                    for (i,commit) in commits.iter().enumerate() {
-                        let idx=offset+i;
-                        let sel = Some(idx)==selected_commit_index;
+                    for (i, commit) in commits.iter().enumerate() {
+                        let idx = offset + i;
+                        let sel = Some(idx) == selected_commit_index;
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                         let style = if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                        let line = render_commit_line(commit, indicator, sel);
-                        items.push(ListItem::new(line).style(style));
+                        if detailed_commit_view {
+                            // Render multi-line commit block
+                            let mut lines = Vec::new();
+                            let mut commit_lines = commit.lines();
+                            if let Some(first) = commit_lines.next() {
+                                // Highlight the first line (summary)
+                                lines.push(Line::from(vec![Span::raw(indicator.clone()), Span::raw(" "), Span::styled(first.to_string(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]));
+                            }
+                            for line in commit_lines {
+                                lines.push(Line::from(format!("    {}", line)));
+                            }
+                            items.push(ListItem::new(lines).style(style));
+                        } else {
+                            let line = render_commit_line(commit, indicator, sel);
+                            items.push(ListItem::new(line).style(style));
+                        }
                     }
-                    offset+=commits.len();
+                    offset += commits.len();
                 }
                 let mut state = ListState::default(); state.select(selected_commit_index);
                 let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
@@ -262,14 +276,26 @@ pub fn render_commits(
                 let pos = selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
                 let mut sb = ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
-            } else if let Some((_, commits)) = data.get(selected_repo_index) {
-                let items: Vec<ListItem> = commits.iter().enumerate().map(|(i,commit)|{
+            } else if let Some((repo, commits)) = data.get(selected_repo_index) {
+                let items: Vec<ListItem> = commits.iter().enumerate().map(|(i, commit)|{
                     let sel=Some(i)==selected_commit_index;
                     let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                     let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                     let style=if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                    let line = render_commit_line(commit, indicator, sel);
-                    ListItem::new(line).style(style)
+                    if detailed_commit_view {
+                        let mut lines = Vec::new();
+                        let mut commit_lines = commit.lines();
+                        if let Some(first) = commit_lines.next() {
+                            lines.push(Line::from(vec![Span::raw(indicator.clone()), Span::raw(" "), Span::styled(first.to_string(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]));
+                        }
+                        for line in commit_lines {
+                            lines.push(Line::from(format!("    {}", line)));
+                        }
+                        ListItem::new(lines).style(style)
+                    } else {
+                        let line = render_commit_line(commit, indicator, sel);
+                        ListItem::new(line).style(style)
+                    }
                 }).collect();
                 let mut state=ListState::default(); state.select(selected_commit_index);
                 let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
@@ -390,8 +416,13 @@ pub fn render_commits(
                         (PathBuf::new(), String::new())
                     }
                 };
-                let hash = commit_line.split_whitespace().next().unwrap_or("");
-                let details = get_commit_details(&repo_path, hash).unwrap_or_else(|e| e.to_string());
+                let details = if detailed_commit_view {
+                    // Show the full multi-line commit block as the detail
+                    commit_line.clone()
+                } else {
+                    let hash = commit_line.split_whitespace().next().unwrap_or("");
+                    get_commit_details(&repo_path, hash).unwrap_or_else(|e| e.to_string())
+                };
                 // clear detail region
                 f.render_widget(Clear, detail_chunk);
                 // draw border around detail
@@ -440,9 +471,10 @@ pub fn render_commits(
 
     // footer
     let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
+    let detail_label = if detailed_commit_view {"d: Details ON"} else {"d: Details OFF"};
     let footer = Paragraph::new(format!(
-        "Tab/Shift+Tab Timeframe | ↑/↓/ or h/j/k/l Navigation | <Space> Details | m Mark | s Show Marked | a AI summary | A AI summary (marked) | {} | Q Quit",
-        filter_label
+        "Tab/Shift+Tab Timeframe | ↑/↓/ or h/j/k/l Navigation | <Space> Details | d Toggle commit body | m Mark | s Show Marked | a AI summary | A AI summary (marked) | {} | {} | Q Quit",
+        filter_label, detail_label
     ))
     .block(Block::default().borders(Borders::ALL))
     .style(Style::default().fg(if dim_bg { Color::DarkGray } else { Color::Gray }).add_modifier(Modifier::DIM));

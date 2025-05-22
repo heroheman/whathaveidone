@@ -10,7 +10,7 @@ mod prompts;
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event, KeyCode}};
+use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event}};
 use ratatui::prelude::*;
 use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
@@ -57,7 +57,8 @@ fn main() -> anyhow::Result<()> {
     let mut current_index = intervals.iter().position(|(_, d)| *d == initial_interval).unwrap_or(0);
     let mut current_interval = intervals[current_index].1;
     let mut filter_by_user = true;
-    let mut commits: CommitData = reload_commits(&repos, current_interval, filter_by_user)?;
+    let mut detailed_commit_view = false;
+    let mut commits: CommitData = reload_commits(&repos, current_interval, filter_by_user, detailed_commit_view)?;
 
     let mut selected_repo_index = usize::MAX;
     let mut selected_commit_index: Option<usize> = None;
@@ -123,6 +124,7 @@ fn main() -> anyhow::Result<()> {
                 Some(&popup_quote),
                 Some(&selected_commits),
                 selected_tab,
+                detailed_commit_view, // <-- pass new state
             );
         })?;
 
@@ -151,6 +153,7 @@ fn main() -> anyhow::Result<()> {
                         &lang,
                         prompt_path.as_deref(),
                         &gemini_model,
+                        &mut detailed_commit_view, // <-- pass mutable reference
                     )?;
                     if !handled {
                         break;

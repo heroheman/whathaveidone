@@ -41,7 +41,7 @@ pub fn get_current_git_user() -> Result<String> {
     }
 }
 
-pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bool) -> Result<Vec<String>> {
+pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bool, detailed: bool) -> Result<Vec<String>> {
     let since = SystemTime::now() - interval;
     let since_datetime: DateTime<Local> = since.into();
     let since_str = since_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
@@ -51,7 +51,11 @@ pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bo
         .arg("log")
         .arg("--since").arg(&since_str);
 
-    if filter_by_user {
+    if detailed {
+        // Use a unique separator for robust splitting, and show date+time (hh:mm)
+        cmd.arg("--date=format:'%Y-%m-%d %H:%M'");
+        cmd.arg("--format=%h %ad%n%B (%an)%n---GITBLOCK---");
+    } else if filter_by_user {
         cmd.arg("--pretty=format:%h %ar %s");
         static USER_EMAIL: OnceLock<Option<String>> = OnceLock::new();
         let user = USER_EMAIL.get_or_init(|| get_current_git_user().ok());
@@ -64,15 +68,20 @@ pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bo
 
     let output = cmd.output()?;
     let stdout = String::from_utf8_lossy(&output.stdout);
-    Ok(stdout.lines().map(|s| s.to_string()).collect())
+    // For detailed view, split by the unique separator
+    if detailed {
+        Ok(stdout.split("---GITBLOCK---").map(|s| s.trim_matches(['\n', '\r', ' '].as_ref()).to_string()).filter(|s| !s.is_empty()).collect())
+    } else {
+        Ok(stdout.lines().map(|s| s.to_string()).collect())
+    }
 }
 
 pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 
-pub fn reload_commits(repos: &Vec<PathBuf>, duration: Duration, filter_by_user: bool) -> Result<CommitData> {
+pub fn reload_commits(repos: &Vec<PathBuf>, duration: Duration, filter_by_user: bool, detailed: bool) -> Result<CommitData> {
     let mut commits = vec![];
     for repo in repos {
-        let repo_commits = get_recent_commits(repo, duration, filter_by_user)?;
+        let repo_commits = get_recent_commits(repo, duration, filter_by_user, detailed)?;
         if !repo_commits.is_empty() {
             commits.push((repo.clone(), repo_commits));
         }
