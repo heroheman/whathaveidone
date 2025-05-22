@@ -122,22 +122,23 @@ pub fn render_commits(
     // 'All' entry
     let all_selected = selected_repo_index == usize::MAX;
     let all_style = if all_selected {
-        Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)
+        Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED)
     } else {
         Style::default().fg(bg_fg)
     };
     repo_list.push(ListItem::new(vec![
         Line::from(vec![Span::styled(
-            format!("All ({} Projects)", filtered_repos.len()),
+            format!("\u{1F30D}  All Projects ({} total)", filtered_repos.len()), // 🌍
             all_style
         )]),
         Line::from(vec![Span::styled(
-            format!("{} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, interval_label),
+            format!("  {} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, interval_label),
             Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)
         )]),
+        Line::from(vec![Span::raw("")]),
     ]));
     // Visual divider
-    repo_list.push(ListItem::new(Line::from(vec![Span::styled("────────────", Style::default().fg(Color::DarkGray))])));
+    repo_list.push(ListItem::new(Line::from(vec![Span::styled("━━━━━━━━━━━━━━━━━━━━", Style::default().fg(Color::Gray))])));
     // Per-repo entries (only those with commits)
     if filtered_repos.is_empty() {
         repo_list.push(ListItem::new(Line::from(vec![Span::styled(
@@ -146,24 +147,18 @@ pub fn render_commits(
         )])));
     } else {
         for (i, repo) in filtered_repos.iter().enumerate() {
-            // Always show project title as section header, even for single repo
             let name = if let Some(fname) = repo.file_name() {
                 fname.to_string_lossy()
             } else if let Some(parent) = repo.parent() {
-                // fallback: show last path component if file_name is empty (e.g. current dir)
                 parent.file_name().unwrap_or_default().to_string_lossy()
             } else {
                 repo.to_string_lossy()
             };
-            repo_list.push(ListItem::new(Line::from(vec![Span::styled(
-                name,
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
-            )])));
             let selected = selected_repo_index == i;
             let style = if selected {
-                Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)
+                Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
-                Style::default().fg(bg_fg)
+                Style::default().fg(Color::Cyan)
             };
             let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
             let count_style = if count > 0 {
@@ -172,15 +167,25 @@ pub fn render_commits(
                 Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
             };
             repo_list.push(ListItem::new(vec![
-                Line::from(vec![Span::styled(format!("{} commit{}", count, if count == 1 { "" } else { "s" }), count_style)]),
+                Line::from(vec![Span::styled(
+                    format!("\u{1F5C3}  {}", name), // 🗃️ (smaller folder icon)
+                    style
+                )]),
+                Line::from(vec![Span::styled(
+                    format!("   {} commit{}", count, if count == 1 { "" } else { "s" }),
+                    count_style
+                )]),
+                Line::from(vec![Span::raw("")]),
             ]));
         }
     }
-    let sidebar = List::new(repo_list).highlight_symbol("→").style(Style::default().fg(bg_fg));
+    let sidebar = List::new(repo_list)
+        .highlight_symbol("▶ ")
+        .style(Style::default().fg(bg_fg)); // removed .bg(Color::Rgb(30,34,40))
     let mut sidebar_state = ListState::default();
-    sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index+2}));
+    sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index*3+2}));
     let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
-        .style(Style::default().fg(bg_cyan));
+        .style(Style::default().fg(bg_cyan)); // removed .bg(Color::Rgb(30,34,40))
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
 
     // Commit list layout with scrollbar
@@ -190,7 +195,8 @@ pub fn render_commits(
         .split(commit_area);
 
     // Tabs for commit list (refactored)
-    let tab_titles = ["Timeframe [2]", "Selection [3]", "Stats [4]"];
+    // let tab_titles = ["Timeframe [2]", "Selection [3]", "Stats [4]"];
+    let tab_titles = ["Timeframe [2]", "Selection [3]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
         .block(Block::default().borders(Borders::ALL).title("Select View"))
         .style(Style::default().fg(bg_fg))
