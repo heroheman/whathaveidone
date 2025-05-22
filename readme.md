@@ -34,11 +34,12 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 
 2. Run the app in your commandline with `whathaveidone` or just `whid`. It will look relative from the folder you started the app. 
 
-   - To use German for the AI summary, add the `--lang de` parameter:
+   - To use a specific language for the AI summary, add the `--lang <language>` parameter (e.g. `--lang german` for German, `--lang english` for English). If not specified, the default is `english`.
+   - **Note**: the translation is made by gemini itself
      ```sh
      whathaveidone --lang de
      # or
-     whid --lang de
+     whid --lang english
      ```
 
    - You can also specify the interval for commit history by providing one of these arguments:
@@ -54,8 +55,16 @@ A terminal tool to summarize your Git commit history for daily standups, using A
      ```
 
    - **Custom prompt:**
-     You can provide a custom prompt template file using the `--prompt <filename.txt>` option (relative or absolute path). If this option is used, the file content will be sent as the prompt to the AI (no default wrapping or formatting). You can use placeholders like `{project}`, `{interval}`, and `{commits}` in your template, which will be replaced accordingly.
-     
+     You can provide a custom prompt template file using the `--prompt <filename.txt>` option (relative or absolute path). If this option is used, the file content will be sent as the prompt to the AI (no default wrapping or formatting). You can use the following placeholders in your template, which will be replaced accordingly:
+
+     - `{from}`: Start date of the selected interval (format: YYYY-MM-DD)
+     - `{to}`: End date of the selected interval (format: YYYY-MM-DD)
+     - `{project}`: Name of the selected project
+     - `{projectname}`: Alias for `{project}`
+     - `{interval}`: The selected interval label (e.g. "week", "24h")
+     - `{lang}`: The language parameter (e.g. "de", "english")
+     - `{commits}`: The commit data to be summarized
+
      Example:
      ```sh
      whathaveidone --prompt myprompt.txt

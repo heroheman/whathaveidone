@@ -32,6 +32,7 @@ pub fn handle_key(
     lang: &str, // <-- add lang argument
     prompt_path: Option<&str>, // <-- add prompt_path argument
 ) -> Result<bool> {
+    let lang = if lang.is_empty() { "english" } else { lang };
     match key {
         KeyCode::Char('1') => {
             *focus = FocusArea::Sidebar;
@@ -335,7 +336,9 @@ pub fn handle_key(
                         template = template.replace("{from}", &from_date);
                         template = template.replace("{to}", &to_date);
                         template = template.replace("{project}", &project_name);
+                        template = template.replace("{projectname}", &project_name);
                         template = template.replace("{interval}", interval_str);
+                        template = template.replace("{lang}", lang);
                         template = template.replace("{commits}", &commit_str);
                         template
                     }
