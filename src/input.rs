@@ -28,7 +28,7 @@ pub fn handle_key(
     popup_quote: &Arc<Mutex<PopupQuote>>,
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     rt: &Runtime,
-    selected_tab: crate::CommitTab,
+    selected_tab: &mut crate::CommitTab,
     lang: &str, // <-- add lang argument
     prompt_path: Option<&str>, // <-- add prompt_path argument
     gemini_model: &str, // <-- add gemini_model argument
@@ -38,12 +38,15 @@ pub fn handle_key(
     match key {
         KeyCode::Char('1') => {
             *focus = FocusArea::Sidebar;
+            *selected_tab = crate::CommitTab::Timeframe;
         },
         KeyCode::Char('2') => {
             *focus = FocusArea::CommitList;
+            *selected_tab = crate::CommitTab::Timeframe;
         },
         KeyCode::Char('3') => {
             *focus = FocusArea::CommitList;
+            *selected_tab = crate::CommitTab::Selection;
         },
         KeyCode::Char('w') => {
             *current_index = 3;
@@ -597,8 +600,8 @@ pub fn handle_mouse(
                 ratatui::layout::Constraint::Min(1),
                 ratatui::layout::Constraint::Length(3)
             ]).split(area);
-        let columns = if let Some(selected_commit_index) = selected_commit_index {
-            if *selected_commit_index != usize::MAX && *focus == crate::models::FocusArea::Detail {
+        let columns = if selected_commit_index.is_some() {
+            if selected_commit_index.unwrap() != usize::MAX && *focus == crate::models::FocusArea::Detail {
                 ratatui::layout::Layout::default()
                     .direction(ratatui::layout::Direction::Horizontal)
                     .constraints([

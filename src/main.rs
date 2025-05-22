@@ -149,7 +149,7 @@ fn main() -> anyhow::Result<()> {
                         &popup_quote,
                         &selected_commits,
                         &rt,
-                        selected_tab,
+                        &mut selected_tab, // <-- pass as mutable reference
                         &lang,
                         prompt_path.as_deref(),
                         &gemini_model,
