@@ -528,7 +528,10 @@ pub fn render_commits(
         if sel.popup_visible {
             let popup_area = centered_rect(60, 40, f.area());
             f.render_widget(Clear, popup_area);
-            let mut lines = vec![Line::from("Selected Commits:")];
+            // Header with icon and color
+            let mut lines = vec![Line::from(vec![
+                Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
+            ])];
             // Build a map of hash -> full commit line for lookup
             let mut hash_to_commit = std::collections::HashMap::new();
             for (_repo, commits) in data {
@@ -546,7 +549,10 @@ pub fn render_commits(
                 }
             }
             let para = Paragraph::new(lines)
-                .block(Block::default().title("Selected Commits").borders(Borders::ALL).style(Style::default().fg(Color::Magenta).bg(Color::Black)))
+                .block(Block::default()
+                    .title(Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)))
+                    .borders(Borders::ALL)
+                    .style(Style::default().bg(Color::Black)))
                 .wrap(Wrap{trim:true})
                 .alignment(Alignment::Left)
                 .style(Style::default().fg(Color::White));
