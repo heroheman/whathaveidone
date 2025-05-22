@@ -359,6 +359,7 @@ pub fn handle_key(
                 let mut p = popup_quote.lock().unwrap();
                 p.visible = true;
                 p.loading = true;
+                p.spinner_frame = 0;
                 p.text = match (&debug_msg, prompt_path) {
                     (Some(msg), Some(_)) | (Some(msg), None) => format!(
                         "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [length: {} chars]\n\nLoading commit summary...",
@@ -393,11 +394,31 @@ pub fn handle_key(
             let lang_owned = lang.to_string();
             let gemini_model = gemini_model.to_string();
             rt.spawn(async move {
-                let summary = match crate::network::fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model).await {
-                    Ok(s) => s,
-                    Err(e) => format!("Gemini error: {}", e),
-                };
-                let mut p = p2.lock().unwrap(); p.text=summary; p.loading=false;
+                // Animate spinner while loading
+                let popup_clone = p2.clone();
+                let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+                // Start spinner loop and summary fetch in parallel
+                let fetch = crate::network::fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model);
+                tokio::pin!(fetch);
+                loop {
+                    tokio::select! {
+                        _ = interval.tick() => {
+                            let mut p = popup_clone.lock().unwrap();
+                            if !p.loading { break; }
+                            p.spinner_frame = p.spinner_frame.wrapping_add(1);
+                        }
+                        result = &mut fetch => {
+                            let summary = match result {
+                                Ok(s) => s,
+                                Err(e) => format!("Gemini error: {}", e),
+                            };
+                            let mut p = popup_clone.lock().unwrap();
+                            p.text = summary;
+                            p.loading = false;
+                            break;
+                        }
+                    }
+                }
             });
         }
         KeyCode::Char('c') => {
@@ -515,7 +536,7 @@ pub fn handle_mouse(
                     interval=interval_label,
                     commits=commit_str
                 );
-                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.text=format!("Gemini model: {model}\n\nLoading commit summary...", model=gemini_model); }
+                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.spinner_frame=0; p.text=format!("Gemini model: {model}\n\nLoading commit summary...", model=gemini_model); }
                 let popup_quote = popup_quote.clone();
                 let lang_owned = lang.to_string();
                 let gemini_model = gemini_model.to_string();

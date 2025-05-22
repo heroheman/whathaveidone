@@ -528,7 +528,7 @@ pub fn render_commits(
             // Loading spinner/animation
             let spinner = if popup.loading {
                 let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-                let frame = frames[((scroll as usize) / 2) % frames.len()];
+                let frame = frames[(popup.spinner_frame as usize) % frames.len()];
                 format!("{} ", frame)
             } else {
                 String::new()
