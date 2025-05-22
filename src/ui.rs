@@ -488,49 +488,83 @@ pub fn render_commits(
             let area = f.area();
             let dim_block = Block::default().style(Style::default().bg(Color::Rgb(30, 30, 30)).fg(Color::Reset));
             f.render_widget(dim_block, area);
-            // Overlay a dark gray color on all text widgets in the background
-            // (This is a visual effect: set fg to Color::DarkGray for all widgets except the popup)
-            // Popup larger
-            let popup_area = centered_rect(60,80,f.area());
+            // Centered popup area
+            let popup_area = centered_rect(60, 80, f.area());
             f.render_widget(Clear, popup_area);
-            // Dynamic title
-            let project = if selected_repo_index==usize::MAX {
+
+            // Header: icon, project, interval
+            let project = if selected_repo_index == usize::MAX {
                 "All projects".to_string()
-            } else if let Some((repo,_)) = data.get(selected_repo_index) {
+            } else if let Some((repo, _)) = data.get(selected_repo_index) {
                 repo.file_name().unwrap_or_default().to_string_lossy().to_string()
             } else {
                 "Project".to_string()
             };
-            let title = format!("Summary for {} of the last {}", project, interval_label);
-            // Draw X button in upper right
+            let title = format!("\u{1F916}  AI Summary for {}", project);
+            let interval = format!("Interval: {}", interval_label);
             let x_button = Span::styled("[X]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
-            let mut title_line = vec![Span::styled(&title, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD))];
+            let mut title_line = vec![
+                Span::styled(&title, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::raw("  "),
+                Span::styled(&interval, Style::default().fg(Color::Yellow)),
+            ];
             // Pad to right edge
             let popup_width = popup_area.width as usize;
-            let title_width = title.len();
+            let title_width = title.len() + interval.len() + 2;
             let x_button_width = 3;
             let pad = if popup_width > title_width + x_button_width + 2 { popup_width - title_width - x_button_width - 2 } else { 1 };
             title_line.push(Span::raw(" ".repeat(pad)));
             title_line.push(x_button);
-            let block = Block::default().borders(Borders::ALL).style(Style::default().bg(Color::Black));
+
+            // Block for popup
+            let block = Block::default()
+                .borders(Borders::ALL)
+                .style(Style::default().bg(Color::Black))
+                .title(Line::from(title_line));
+
             let scroll = popup.scroll;
             let text_line_count = popup.text.lines().count() as u16;
-            // Add padding to the popup content
-            let padded_text = format!(
-                "\n  {}  \n",
-                popup.text
-                    .lines()
-                    .map(|line| format!("  {}  ", line))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            );
+
+            // Loading spinner/animation
+            let spinner = if popup.loading {
+                let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                let frame = frames[((scroll as usize) / 2) % frames.len()];
+                format!("{} ", frame)
+            } else {
+                String::new()
+            };
+
+            // Content: always show popup.text (which includes variables if loading)
+            let padded_text = if popup.loading {
+                // Show spinner above the text
+                format!(
+                    "\n   {}Loading...\n\n{}\n",
+                    spinner,
+                    popup.text
+                        .lines()
+                        .map(|line| format!("  {}  ", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            } else {
+                format!(
+                    "\n{}\n",
+                    popup.text
+                        .lines()
+                        .map(|line| format!("  {}  ", line))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                )
+            };
+
             let para = Paragraph::new(padded_text)
-                .block(block.title(Line::from(title_line)))
-                .wrap(Wrap{trim:true})
+                .block(block)
+                .wrap(Wrap { trim: true })
                 .alignment(Alignment::Left)
                 .scroll((scroll, 0))
                 .style(Style::default().fg(Color::White));
             f.render_widget(para, popup_area);
+
             // Draw a vertical scrollbar inside the popup
             let scrollbar_area = Rect {
                 x: popup_area.x + popup_area.width - 1,
@@ -542,15 +576,16 @@ pub fn render_commits(
                 .position(scroll as usize)
                 .content_length(text_line_count as usize);
             f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), scrollbar_area, &mut sb);
-            // Footer below the popup (white text)
+
+            // Footer visually separated
             let footer_area = Rect {
                 x: popup_area.x,
                 y: popup_area.y + popup_area.height,
                 width: popup_area.width,
                 height: 1,
             };
-            let footer = Paragraph::new("Press c to copy to clipboard | ↑/↓ scroll | Esc close")
-                .style(Style::default().fg(Color::White));
+            let footer = Paragraph::new("Press c to copy | ↑/↓ scroll | Esc close")
+                .style(Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC));
             f.render_widget(footer, footer_area);
         }
     }
