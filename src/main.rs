@@ -112,8 +112,8 @@ fn main() -> anyhow::Result<()> {
         _ => cli.timeframe.parse::<u64>().unwrap_or(24),
     };
     let initial_interval = Duration::from_secs(hours * 3600);
-    let lang = cli.lang.unwrap_or_else(|| "en".to_string());
-    let prompt_path = cli.prompt;
+    let lang = cli.lang.or(settings.lang).unwrap_or_else(|| "en".to_string());
+    let prompt_path = cli.prompt.or(settings.custom_prompt_path);
     let cli_gemini_model = cli.model;
     let from_date = cli.from;
     let to_date = cli.to;

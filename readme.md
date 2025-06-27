@@ -55,7 +55,16 @@ Here's an example of the `whid.toml` file and the available settings:
 ```toml
 # The default Gemini model to use for summaries.
 # This can be overridden by the --model command-line flag.
-gemini_model = "gemini-1.5-flash"
+gemini_model = "gemini-2.0-flash"
+
+# Optional: Path to a custom prompt template file.
+# If provided, this file will be used for AI summaries.
+# This can be overridden by the --prompt command-line flag.
+custom_prompt_path = "path/to/your/prompt.txt"
+
+# Default language for the AI summary.
+# Can be overridden by the --lang command-line flag.
+lang = "english"
 ```
 
 ---
@@ -87,7 +96,7 @@ To use a specific language for the AI summary, add the `--lang <language>` param
 whathaveidone --lang german      # German
 whid --lang english              # English (default)
 ```
-**Note:** The translation is performed by Gemini itself.
+**Note:** The translation is performed by Gemini itself. The `--lang` command-line flag will always override the `lang` setting from your configuration file.
 
 ### Time interval selection
 Use `TAB` or `SHIFT-TAB` for interval selection. 
@@ -129,6 +138,8 @@ Example:
 whathaveidone --prompt myprompt.txt
 ```
 If the file cannot be loaded, the default prompt will be used.
+
+The `--prompt` command-line flag will always override the `custom_prompt_path` from your configuration file.
 
 ### Detailed commit view ("git log" style)
 

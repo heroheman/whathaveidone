@@ -10,5 +10,11 @@ gemini_api_key = ""
 # Set to false to disable the startup prompt for the API key.
 prompt_for_api_key = true
 
-# Set the language
+# Path to a custom prompt template file.
+# If set, this file will be used for generating AI summaries.
+# This can be overridden by the --prompt command-line flag.
+custom_prompt_path = ""
+
+# Default language for the AI summary.
+# Can be overridden by the --lang command-line flag.
 lang = "english"

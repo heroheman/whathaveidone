@@ -10,6 +10,8 @@ pub struct Settings {
     pub gemini_model: String,
     pub gemini_api_key: Option<String>,
     pub prompt_for_api_key: bool,
+    pub custom_prompt_path: Option<String>,
+    pub lang: Option<String>,
 }
 
 impl Settings {
