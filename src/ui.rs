@@ -101,6 +101,9 @@ pub fn render_commits(
     selected_tab: CommitTab,
     detailed_commit_view: bool, // <-- new argument
 ) {
+    // Set a global background color
+    f.render_widget(Block::default().style(Style::default().bg(Color::Black)), f.area());
+
     let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
     let area = f.area();
     let vertical_chunks = Layout::default()
