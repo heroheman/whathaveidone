@@ -6,11 +6,12 @@ mod network;
 mod ui;
 mod input;
 mod prompts;
+mod config;
 
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType}, event::{self, Event}};
+use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}};
 use ratatui::prelude::*;
 use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
@@ -19,6 +20,8 @@ use crate::input::{handle_key, handle_mouse};
 use crate::models::SelectedCommits;
 use std::collections::HashSet;
 use utils::CommitData;
+use crate::config::Settings;
+use std::io::{self, Write};
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum CommitTab {
@@ -44,7 +47,34 @@ impl CommitTab {
 }
 
 fn main() -> anyhow::Result<()> {
-    let (initial_interval, lang, prompt_path, gemini_model) = parse_args();
+    let mut settings = Settings::new().expect("Failed to load settings");
+
+    // Check for API key from config or environment variable
+    let api_key_from_env = env::var("GEMINI_API_KEY").ok();
+    let mut api_key = settings.gemini_api_key.clone().filter(|k| !k.is_empty()).or(api_key_from_env);
+
+    // If no key is found, prompt the user
+    if api_key.is_none() && settings.prompt_for_api_key {
+        if unsafe { prompt_for_api_key()? } {
+            // Re-load settings to get the new key
+            settings = Settings::new().expect("Failed to reload settings after key entry");
+            api_key = settings.gemini_api_key.clone();
+        }
+    }
+    
+    // If a key is available (from config or prompt), set it as an env var for gemini-rs to pick up
+    if let Some(key) = &api_key {
+        unsafe {
+            env::set_var("GEMINI_API_KEY", key);
+        }
+    }
+
+    let (initial_interval, lang, prompt_path, cli_gemini_model) = parse_args();
+    let mut gemini_model = settings.gemini_model;
+    if let Some(model) = cli_gemini_model {
+        gemini_model = model;
+    }
+
     let repos = find_git_repos(".")?;
 
     let intervals = vec![
@@ -240,12 +270,76 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn parse_args() -> (Duration, String, Option<String>, String) {
+unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
+    let mut stdout = io::stdout();
+    let mut selection = 0; // 0 for Yes, 1 for Skip, 2 for Never
+
+    loop {
+        // Clear the line and print the prompt
+        execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
+        println!("No Gemini API key found.");
+        
+        let yes_style = if selection == 0 { "[Yes]" } else { " Yes " };
+        let skip_style = if selection == 1 { "[Skip]" } else { " Skip " };
+        let never_style = if selection == 2 { "[Never Ask Again]" } else { " Never Ask Again " };
+        
+        print!("Would you like to add one now? {} {} {}", yes_style, skip_style, never_style);
+        stdout.flush()?;
+
+        enable_raw_mode()?;
+        let key_event = read()?;
+        disable_raw_mode()?;
+
+        if let Event::Key(key) = key_event {
+            match key.code {
+                KeyCode::Left => selection = (selection + 2) % 3,
+                KeyCode::Right => selection = (selection + 1) % 3,
+                KeyCode::Enter => break,
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(false),
+                _ => {}
+            }
+        }
+    }
+
+    if selection == 0 { // Yes
+        execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
+        print!("Please enter your Gemini API key: ");
+        stdout.flush()?;
+
+        let mut key_input = String::new();
+        io::stdin().read_line(&mut key_input)?;
+        let key = key_input.trim();
+        
+        if key.is_empty() {
+            return Ok(false);
+        }
+
+        config::save_api_key(key)?;
+        println!("\nAPI key saved to ~/.config/whid/whid.toml. Starting application...");
+        std::thread::sleep(Duration::from_secs(2));
+        Ok(true)
+    } else if selection == 1 { // Skip
+        execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
+        Ok(false)
+    } else { // Never Ask Again
+        config::disable_api_key_prompt()?;
+        execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
+        println!("Understood. The API key prompt has been disabled.");
+        println!("You can add your key manually to your configuration file at:");
+        println!("{}", config::get_user_config_path().display());
+        println!("\nOr, set it as an environment variable: export GEMINI_API_KEY=your-key-here");
+        println!("\nStarting application...");
+        std::thread::sleep(Duration::from_secs(4));
+        Ok(false)
+    }
+}
+
+fn parse_args() -> (Duration, String, Option<String>, Option<String>) {
     let args: Vec<String> = env::args().collect();
     let mut hours = 24;
     let mut lang = "en".to_string();
     let mut prompt_path: Option<String> = None;
-    let mut gemini_model = "gemini-2.0-flash".to_string();
+    let mut gemini_model: Option<String> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -266,9 +360,9 @@ fn parse_args() -> (Duration, String, Option<String>, String) {
                     i += 1;
                 }
             },
-            "--gemini" => {
+            "--model" => {
                 if i + 1 < args.len() {
-                    gemini_model = args[i + 1].clone();
+                    gemini_model = Some(args[i + 1].clone());
                     i += 1;
                 }
             },
@@ -276,5 +370,5 @@ fn parse_args() -> (Duration, String, Option<String>, String) {
         }
         i += 1;
     }
-    (Duration::from_secs((hours * 3600) as u64), lang, prompt_path, gemini_model)
+    (Duration::from_secs(hours * 3600), lang, prompt_path, gemini_model)
 }

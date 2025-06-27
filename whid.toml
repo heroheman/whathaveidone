@@ -1,0 +1,14 @@
+# The default Gemini model to use for summaries.
+# This can be overridden by the --model command-line flag.
+gemini_model = "gemini-2.0-flash"
+
+# Your Gemini API key.
+# If this is empty, the application will check the GEMINI_API_KEY environment variable.
+# If neither is set, you will be prompted to enter a key on startup.
+gemini_api_key = ""
+
+# Set to false to disable the startup prompt for the API key.
+prompt_for_api_key = true
+
+# Set the language
+lang = "english"
