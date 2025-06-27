@@ -2,10 +2,52 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2025-06-27
+
+### 🚀 Features
+
+- Enhance commit rendering with user filtering and formatting
+- *(config)* Implement configuration management for Gemini API key and model
+- *(theme)* Introduce theming support for UI components
+- *(commits)* Enhance commit retrieval with date filtering options
+- *(cli)* Implement command-line interface for commit history summarization
+- *(config)* Update configuration options for AI summaries
+- *(config)* Improve user configuration handling
+
+### 🐛 Bug Fixes
+
+- Improve date formatting and user filtering in commit retrieval
+- *(input)* Improve error message for missing Gemini API key
+
+### 🚜 Refactor
+
+- *(ui)* Simplify item creation in commit rendering
+- *(config)* Linting
+
+### 📚 Documentation
+
+- *(readme)* Add configuration section for `whid.toml` and update usage instructions
+- *(readme)* Add custom date range feature for commit history
+
+### 🎨 Styling
+
+- *(ui)* Enhance API key prompt with colored output
+- *(ui)* Set global background color in commit rendering
+
+### ⚙️ Miscellaneous Tasks
+
+- *(package)* Update gemini-rs to 2.0.0
+- *(package)* Add config package
+- *(dependencies)* Update and add new packages in Cargo.lock and Cargo.toml
+- *(dependencies)* Add toml package to Cargo.toml and Cargo.lock
+- *(dependencies)* Add clap package
+
 ## [0.4.0] - 2025-05-22
 
 ### 🚀 Features
 
+- Add asciicast link to README for better visibility
+- Add Stats tab to commit view
 - Enhance prompt handling and formatting for commit summaries
 - Enhance language support and prompt template placeholders
 - Improve git repository detection and UI commit rendering
@@ -19,6 +61,7 @@ All notable changes to this project will be documented in this file.
 - Add shortcuts visibility toggle and update popup handling
 - Update key handling and popup rendering
 - Add loading spinner to popup during commit summary fetch
+- Add new arguments to handle_key and handle_mouse functions
 
 ### 🐛 Bug Fixes
 
@@ -28,6 +71,8 @@ All notable changes to this project will be documented in this file.
 ### ⚙️ Miscellaneous Tasks
 
 - Update after gitignore change
+- Update changelog for version 0.4.0
+- Release whathaveidone version 0.4.0
 
 ## [0.3.2] - 2025-04-25
 
