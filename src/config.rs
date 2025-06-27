@@ -16,19 +16,6 @@ pub struct Settings {
 
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
-        let blueprint_path = match std::env::var("CARGO_MANIFEST_DIR") {
-            Ok(manifest_dir) => {
-                let mut path = PathBuf::from(manifest_dir);
-                path.push("whid.toml");
-                path
-            }
-            Err(_) => {
-                // Fallback for release builds or when not using Cargo.
-                // Assumes whid.toml is in the current working directory.
-                PathBuf::from("whid.toml")
-            }
-        };
-
         let user_config_path = get_user_config_path();
 
         // Ensure the user config directory exists
@@ -39,8 +26,7 @@ impl Settings {
         }
 
         // Read the blueprint
-        let blueprint_content = fs::read_to_string(&blueprint_path)
-            .expect("Could not read blueprint config file");
+        let blueprint_content = include_str!("../whid.toml");
         let blueprint_table: toml::Table = blueprint_content.parse()
             .expect("Could not parse blueprint config as TOML");
 
@@ -68,7 +54,7 @@ impl Settings {
         let s = Config::builder()
             // 1. Load project defaults from whid.toml (blueprint). Required.
             // This still acts as the base for deserialization structure.
-            .add_source(File::from(blueprint_path).required(true))
+            .add_source(config::File::from_str(blueprint_content, config::FileFormat::Toml))
             // 2. Merge user's global config.
             .add_source(File::from(user_config_path).required(true))
             // 3. Merge local whid.toml from CWD. Optional override.
