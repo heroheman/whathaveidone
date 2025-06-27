@@ -385,10 +385,12 @@ pub fn handle_key(
             }
             // Check for Gemini API key before spawning async task
             if std::env::var("GEMINI_API_KEY").is_err() {
-                let mut p = popup_quote.lock().unwrap();
-                p.visible = true;
-                p.loading = false;
-                p.text = "Gemini API key not found. Please set the GEMINI_API_KEY environment variable.\nExample: export GEMINI_API_KEY=<YOUR API KEY>".to_string();
+                let config_path = crate::config::get_user_config_path();
+                let error_message = format!(
+                    "Gemini API key not found.\n\nPlease add it to your configuration file at:\n{}\n\nOr set it as an environment variable: export GEMINI_API_KEY=your-key",
+                    config_path.display()
+                );
+                popup_quote.lock().unwrap().text = error_message;
                 return Ok(true);
             }
             let p2 = popup_quote.clone();
