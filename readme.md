@@ -36,6 +36,30 @@ Add this line to your shell profile (e.g. `~/.zshrc`) to make it persistent acro
 
 ---
 
+## Configuration
+
+`whathaveidone` uses a TOML file for configuration, allowing you to customize its behavior.
+
+### Configuration Hierarchy
+
+The application loads settings from up to three locations in the following order of precedence (lower numbers are overridden by higher numbers):
+
+1.  **Project Blueprint (`whid.toml`)**: A `whid.toml` file located in the project's root directory serves as the base configuration. This file is required and acts as a blueprint for user-specific settings.
+2.  **User Configuration (`~/.config/whid/whid.toml`)**: On the first run, the application copies the project's `whid.toml` to a user-specific directory. This file stores your personal default settings.
+3.  **Local Override (`whid.toml`)**: You can place a `whid.toml` file in the directory where you run the `whid` command. Its settings will override any of the above, which is useful for project-specific configurations.
+
+### Available Settings
+
+Here's an example of the `whid.toml` file and the available settings:
+
+```toml
+# The default Gemini model to use for summaries.
+# This can be overridden by the --model command-line flag.
+gemini_model = "gemini-1.5-flash"
+```
+
+---
+
 ## Usage
 
 Run the app in your terminal:
@@ -46,7 +70,7 @@ whid
 ```
 
 ### Gemini model selection
-You can select the Gemini model version with the `--gemini <model>` parameter. The default is `gemini-2.0-flash`.
+You can select the Gemini model version by setting the `gemini_model` in your `whid.toml` configuration file, or by using the `--model <model>` parameter as a command-line override. The default is `gemini-2.0-flash`.
 
 Example:
 ```sh
@@ -122,3 +146,6 @@ You can toggle a detailed, multi-line commit log view (similar to `git log --for
 ## Links
 - [whathaveidone on Crates.io](https://crates.io/crates/whathaveidone)
 - [whathaveidone on GitHub](https://github.com/heroheman/whathaveidone)
+
+## Development
+_coming soon_
