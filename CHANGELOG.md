@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2025-06-27
+
+### 🐛 Bug Fixes
+
+- *(config)* Simplify blueprint configuration loading
+
+### ⚙️ Miscellaneous Tasks
+
+- Changelog update
+- Release whathaveidone version 0.5.0
+- Release whathaveidone version 0.5.1
+
 ## [0.5.0] - 2025-06-27
 
 ### 🚀 Features
