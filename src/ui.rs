@@ -14,6 +14,7 @@ use crate::models::SelectedCommits;
 use crate::CommitTab;
 use once_cell::sync::Lazy;
 use regex::Regex;
+use crate::theme::Theme;
 
 // Type alias for commit data for clarity
 pub type CommitData = Vec<(PathBuf, Vec<String>)>;
@@ -22,7 +23,7 @@ pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 static TICKET_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Z]+-\d+").unwrap());
 
 /// Renders a commit line with syntax highlighting and ticket detection.
-fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_by_user: bool) -> Line<'static> {
+fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bool, theme: &Theme) -> Line<'a> {
     let mut spans = vec![];
     let parts: Vec<&str> = if filter_by_user {
         commit.splitn(3, '|').collect()
@@ -31,12 +32,12 @@ fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_b
     };
 
     if let Some(hash) = parts.get(0) {
-        spans.push(Span::styled(hash.trim().to_owned(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+        spans.push(Span::styled(hash.trim().to_owned(), theme.commit_hash));
         spans.push(Span::raw(" | "));
     }
 
     if let Some(datetime) = parts.get(1) {
-        spans.push(Span::styled(datetime.trim().to_owned(), Style::default().fg(Color::Magenta)));
+        spans.push(Span::styled(datetime.trim().to_owned(), theme.commit_datetime));
         spans.push(Span::raw(" | "));
     }
 
@@ -48,7 +49,7 @@ fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_b
                 if m.start() > last {
                     spans.push(Span::raw(subject[last..m.start()].to_owned()));
                 }
-                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), theme.commit_ticket));
                 last = m.end();
             }
             if last < subject.len() {
@@ -57,7 +58,7 @@ fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_b
         }
     } else {
         if let Some(author) = parts.get(2) {
-            spans.push(Span::styled(author.trim().to_owned(), Style::default().fg(Color::Green)));
+            spans.push(Span::styled(author.trim().to_owned(), theme.commit_author));
             spans.push(Span::raw(" | "));
         }
         
@@ -68,7 +69,7 @@ fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_b
                 if m.start() > last {
                     spans.push(Span::raw(subject[last..m.start()].to_owned()));
                 }
-                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), theme.commit_ticket));
                 last = m.end();
             }
             if last < subject.len() {
@@ -85,6 +86,7 @@ fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_b
 /// Renders the commits view.
 pub fn render_commits(
     f: &mut Frame,
+    theme: &Theme,
     _repos: &Vec<PathBuf>,
     selected_repo_index: usize,
     data: &CommitData,
@@ -99,10 +101,9 @@ pub fn render_commits(
     popup_quote: Option<&Arc<Mutex<PopupQuote>>>,
     selected_commits: Option<&Arc<Mutex<SelectedCommits>>>,
     selected_tab: CommitTab,
-    detailed_commit_view: bool, // <-- new argument
+    detailed_commit_view: bool,
 ) {
-    // Set a global background color
-    f.render_widget(Block::default().style(Style::default().bg(Color::Black)), f.area());
+    f.render_widget(Block::default().style(Style::default().bg(theme.root_bg)), f.area());
 
     let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
     let area = f.area();
@@ -112,12 +113,12 @@ pub fn render_commits(
 
     // Determine if we should dim the background
     let dim_bg = popup_quote.map_or(false, |arc| arc.lock().unwrap().visible);
-    let bg_fg = if dim_bg { Color::DarkGray } else { Color::White };
-    let bg_cyan = if dim_bg { Color::DarkGray } else { Color::Cyan };
-    let bg_magenta = if dim_bg { Color::DarkGray } else { Color::Magenta };
-    let bg_green = if dim_bg { Color::DarkGray } else { Color::Green };
-    let bg_yellow = if dim_bg { Color::DarkGray } else { Color::Yellow };
-    let _bg_red = if dim_bg { Color::DarkGray } else { Color::Red };
+    let bg_fg = if dim_bg { theme.blurred_border } else { theme.text };
+    let bg_cyan = if dim_bg { theme.blurred_border } else { theme.focus_border };
+    let bg_magenta = if dim_bg { theme.blurred_border } else { Color::Magenta }; // Not in theme yet
+    let bg_green = if dim_bg { theme.blurred_border } else { Color::Green }; // Not in theme yet
+    let bg_yellow = if dim_bg { theme.blurred_border } else { theme.text_highlight };
+    let _bg_red = if dim_bg { theme.blurred_border } else { Color::Red }; // Not in theme yet
 
     // Main layout: sidebar, commits, optional detail
     let columns = if show_details && selected_commit_index.is_some() {
@@ -171,12 +172,12 @@ pub fn render_commits(
         )]),
         Line::from(vec![Span::styled(
             format!("  {} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, interval_label),
-            Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC)
+            Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC)
         )]),
         Line::from(vec![Span::raw("")]),
     ]));
     // Visual divider
-    repo_list.push(ListItem::new(Line::from(vec![Span::styled("━━━━━━━━━━━━━━━━━━━━", Style::default().fg(Color::Gray))])));
+    repo_list.push(ListItem::new(Line::from(vec![Span::styled("━━━━━━━━━━━━━━━━━━━━", Style::default().fg(theme.blurred_border))])));
     // Per-repo entries (only those with commits)
     if filtered_repos.is_empty() {
         repo_list.push(ListItem::new(Line::from(vec![Span::styled(
@@ -196,13 +197,13 @@ pub fn render_commits(
             let style = if selected {
                 Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED)
             } else {
-                Style::default().fg(Color::Cyan)
+                theme.repo_path
             };
             let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
             let count_style = if count > 0 {
-                Style::default().fg(bg_green).add_modifier(Modifier::BOLD)
+                theme.repo_commit_count
             } else {
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
+                Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)
             };
             repo_list.push(ListItem::new(vec![
                 Line::from(vec![Span::styled(
@@ -276,20 +277,20 @@ pub fn render_commits(
                 for (repo, commits) in data {
                     items.push(ListItem::new(Line::from(vec![Span::styled(
                         format!("\u{1F5C3}  {}", repo.file_name().unwrap_or_default().to_string_lossy()),
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                        theme.repo_commit_count
                     )])));
                     for (i, commit) in commits.iter().enumerate() {
                         let idx = offset + i;
                         let sel = Some(idx) == selected_commit_index;
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        let style = if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
+                        let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
                         if detailed_commit_view && sel {
                             let mut detail_parts = commit.splitn(2, '\n');
                             let commit_line = detail_parts.next().unwrap_or("");
                             let body = detail_parts.next().unwrap_or("");
-                            let rendered_line = render_commit_line(commit_line, indicator, sel, filter_by_user);
-                            let item = ListItem::new(rendered_line).style(style).bg(Color::DarkGray);
+                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, theme);
+                            let item = ListItem::new(rendered_line).style(style).bg(theme.selection_bg);
                             items.push(item);
                             for line in body.lines() {
                                 items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::raw(line)])));
@@ -300,10 +301,10 @@ pub fn render_commits(
                             } else {
                                 commit
                             };
-                            let rendered_line = render_commit_line(commit_line, indicator, sel, filter_by_user);
+                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, theme);
                             let mut item = ListItem::new(rendered_line).style(style);
                             if sel {
-                                item = item.bg(Color::DarkGray);
+                                item = item.bg(theme.selection_bg);
                             }
                             items.push(item);
                         }
@@ -325,11 +326,11 @@ pub fn render_commits(
                     let sel = Some(i) == selected_commit_index;
                     let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                     let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                    let style = if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                    let rendered_line = render_commit_line(commit, indicator, sel, filter_by_user);
+                    let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
+                    let rendered_line = render_commit_line(commit, indicator, filter_by_user, theme);
                     let mut item = ListItem::new(rendered_line).style(style);
                     if sel {
-                        item = item.bg(Color::DarkGray);
+                        item = item.bg(theme.selection_bg);
                     }
                     item
                 }).collect();
@@ -379,13 +380,13 @@ pub fn render_commits(
                     for (repo, commits) in repo_to_commits.iter() {
                         items.push(ListItem::new(Line::from(vec![Span::styled(
                             format!("\u{1F5C3}  {}", repo.file_name().unwrap().to_string_lossy()),
-                            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)
+                            theme.repo_commit_count
                         )])));
                         for commit in commits.iter() {
                             let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
                             let indicator = format!("{}  ", star);
-                            let style = Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD);
-                            let line = render_commit_line(commit, indicator, true, filter_by_user);
+                            let style = Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD);
+                            let line = render_commit_line(commit, indicator, filter_by_user, theme);
                             items.push(ListItem::new(line).style(style));
                         }
                     }
@@ -513,7 +514,7 @@ pub fn render_commits(
         filter_label, detail_label
     ))
     .block(Block::default().borders(Borders::ALL))
-    .style(Style::default().fg(if dim_bg { Color::DarkGray } else { Color::Gray }).add_modifier(Modifier::DIM));
+    .style(if dim_bg { theme.footer.fg(theme.blurred_border) } else { theme.footer });
     f.render_widget(footer, vertical_chunks[1]);
 
     // popup
@@ -522,7 +523,7 @@ pub fn render_commits(
         if popup.visible {
             // Dim the background
             let area = f.area();
-            let dim_block = Block::default().style(Style::default().bg(Color::Rgb(30, 30, 30)).fg(Color::Reset));
+            let dim_block = Block::default().style(Style::default().bg(theme.dim_bg).fg(Color::Reset));
             f.render_widget(dim_block, area);
             // Centered popup area
             let popup_area = centered_rect(60, 80, f.area());
@@ -540,9 +541,9 @@ pub fn render_commits(
             let interval = format!("Interval: {}", interval_label);
             let x_button = Span::styled("[X]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
             let mut title_line = vec![
-                Span::styled(&title, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                Span::styled(&title, theme.popup_title),
                 Span::raw("  "),
-                Span::styled(&interval, Style::default().fg(Color::Yellow)),
+                Span::styled(&interval, Style::default().fg(theme.text_highlight)),
             ];
             // Pad to right edge
             let popup_width = popup_area.width as usize;
@@ -555,7 +556,7 @@ pub fn render_commits(
             // Block for popup
             let block = Block::default()
                 .borders(Borders::ALL)
-                .style(Style::default().bg(Color::Black))
+                .style(theme.popup_border)
                 .title(Line::from(title_line));
 
             let scroll = popup.scroll;
@@ -598,7 +599,7 @@ pub fn render_commits(
                 .wrap(Wrap { trim: true })
                 .alignment(Alignment::Left)
                 .scroll((scroll, 0))
-                .style(Style::default().fg(Color::White));
+                .style(theme.popup_text);
             f.render_widget(para, popup_area);
 
             // Draw a vertical scrollbar inside the popup
@@ -621,7 +622,7 @@ pub fn render_commits(
                 height: 1,
             };
             let footer = Paragraph::new("Press c to copy | ↑/↓ scroll | Esc close")
-                .style(Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC));
+                .style(Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC));
             f.render_widget(footer, footer_area);
         }
     }
@@ -655,10 +656,10 @@ pub fn render_commits(
                 .block(Block::default()
                     .title(Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)))
                     .borders(Borders::ALL)
-                    .style(Style::default().bg(Color::Black)))
+                    .style(theme.popup_border))
                 .wrap(Wrap{trim:true})
                 .alignment(Alignment::Left)
-                .style(Style::default().fg(Color::White));
+                .style(theme.popup_text);
             f.render_widget(para, popup_area);
         }
     }

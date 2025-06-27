@@ -7,6 +7,7 @@ mod ui;
 mod input;
 mod prompts;
 mod config;
+mod theme;
 
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
@@ -22,6 +23,7 @@ use std::collections::HashSet;
 use utils::CommitData;
 use crate::config::Settings;
 use std::io::{self, Write};
+use crate::theme::Theme;
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum CommitTab {
@@ -69,6 +71,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
+    let theme = Theme::default();
     let (initial_interval, lang, prompt_path, cli_gemini_model) = parse_args();
     let mut gemini_model = settings.gemini_model;
     if let Some(model) = cli_gemini_model {
@@ -140,6 +143,7 @@ fn main() -> anyhow::Result<()> {
             last_sidebar_area = Some(sidebar_area);
             render_commits(
                 f,
+                &theme,
                 &repos,
                 selected_repo_index,
                 &commits,
@@ -154,7 +158,7 @@ fn main() -> anyhow::Result<()> {
                 Some(&popup_quote),
                 Some(&selected_commits),
                 selected_tab,
-                detailed_commit_view, // <-- pass new state
+                detailed_commit_view,
             );
         })?;
 
@@ -179,11 +183,11 @@ fn main() -> anyhow::Result<()> {
                         &popup_quote,
                         &selected_commits,
                         &rt,
-                        &mut selected_tab, // <-- pass as mutable reference
+                        &mut selected_tab,
                         &lang,
                         prompt_path.as_deref(),
                         &gemini_model,
-                        &mut detailed_commit_view, // <-- pass mutable reference
+                        &mut detailed_commit_view,
                     )?;
                     if !handled {
                         break;
@@ -206,7 +210,7 @@ fn main() -> anyhow::Result<()> {
                             &mut selected_tab,
                             &lang,
                             prompt_path.as_deref(),
-                            &gemini_model, // <-- add this argument
+                            &gemini_model,
                         );
                         // Mouse support for commit list tabs
                         // Calculate tab area (same as in ui.rs)
