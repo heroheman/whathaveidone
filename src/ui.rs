@@ -286,7 +286,7 @@ pub fn render_commits(
                             let commit_line = detail_parts.next().unwrap_or("");
                             let body = detail_parts.next().unwrap_or("");
                             let rendered_line = render_commit_line(commit_line, indicator, sel, filter_by_user);
-                            let mut item = ListItem::new(rendered_line).style(style).bg(Color::DarkGray);
+                            let item = ListItem::new(rendered_line).style(style).bg(Color::DarkGray);
                             items.push(item);
                             for line in body.lines() {
                                 items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::raw(line)])));
