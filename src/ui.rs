@@ -116,7 +116,7 @@ pub fn render_commits(
     let bg_fg = if dim_bg { theme.blurred_border } else { theme.text };
     let bg_cyan = if dim_bg { theme.blurred_border } else { theme.focus_border };
     let bg_magenta = if dim_bg { theme.blurred_border } else { Color::Magenta }; // Not in theme yet
-    let bg_green = if dim_bg { theme.blurred_border } else { Color::Green }; // Not in theme yet
+    // let bg_green = if dim_bg { theme.blurred_border } else { Color::Green }; // Not in theme yet
     let bg_yellow = if dim_bg { theme.blurred_border } else { theme.text_highlight };
     let _bg_red = if dim_bg { theme.blurred_border } else { Color::Red }; // Not in theme yet
 

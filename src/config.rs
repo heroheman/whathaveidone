@@ -27,7 +27,7 @@ impl Settings {
             }
         };
 
-        let mut user_config_path = get_user_config_path();
+        let user_config_path = get_user_config_path();
 
         // If the user config doesn't exist, create it from the blueprint `whid.toml`
         if !user_config_path.exists() {
