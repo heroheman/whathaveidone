@@ -22,37 +22,61 @@ pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 static TICKET_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Z]+-\d+").unwrap());
 
 /// Renders a commit line with syntax highlighting and ticket detection.
-fn render_commit_line(commit: &str, indicator: String, _selected: bool) -> Line<'static> {
+fn render_commit_line(commit: &str, indicator: String, _selected: bool, filter_by_user: bool) -> Line<'static> {
     let mut spans = vec![];
-    let mut parts = commit.split_whitespace();
-    if let Some(hash) = parts.next() {
-        spans.push(Span::styled(hash.to_owned(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+    let parts: Vec<&str> = if filter_by_user {
+        commit.splitn(3, '|').collect()
+    } else {
+        commit.splitn(4, '|').collect()
+    };
+
+    if let Some(hash) = parts.get(0) {
+        spans.push(Span::styled(hash.trim().to_owned(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
+        spans.push(Span::raw(" | "));
     }
-    if let Some(date) = parts.next() {
-        if let Some(time) = parts.next() {
-            spans.push(Span::styled(
-                format!(" {} {} ", date, time),
-                Style::default().fg(Color::Magenta),
-            ));
-        } else {
-            spans.push(Span::styled(
-                format!(" {} ", date),
-                Style::default().fg(Color::Magenta),
-            ));
+
+    if let Some(datetime) = parts.get(1) {
+        spans.push(Span::styled(datetime.trim().to_owned(), Style::default().fg(Color::Magenta)));
+        spans.push(Span::raw(" | "));
+    }
+
+    if filter_by_user {
+        if let Some(subject_str) = parts.get(2) {
+            let subject = subject_str.trim();
+            let mut last = 0;
+            for m in TICKET_REGEX.find_iter(subject) {
+                if m.start() > last {
+                    spans.push(Span::raw(subject[last..m.start()].to_owned()));
+                }
+                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                last = m.end();
+            }
+            if last < subject.len() {
+                spans.push(Span::raw(subject[last..].to_owned()));
+            }
+        }
+    } else {
+        if let Some(author) = parts.get(2) {
+            spans.push(Span::styled(author.trim().to_owned(), Style::default().fg(Color::Green)));
+            spans.push(Span::raw(" | "));
+        }
+        
+        if let Some(subject_str) = parts.get(3) {
+            let subject = subject_str.trim();
+            let mut last = 0;
+            for m in TICKET_REGEX.find_iter(subject) {
+                if m.start() > last {
+                    spans.push(Span::raw(subject[last..m.start()].to_owned()));
+                }
+                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
+                last = m.end();
+            }
+            if last < subject.len() {
+                spans.push(Span::raw(subject[last..].to_owned()));
+            }
         }
     }
-    let rest: String = parts.collect::<Vec<_>>().join(" ");
-    let mut last = 0;
-    for m in TICKET_REGEX.find_iter(&rest) {
-        if m.start() > last {
-            spans.push(Span::raw(rest[last..m.start()].to_owned()));
-        }
-        spans.push(Span::styled(rest[m.start()..m.end()].to_owned(), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)));
-        last = m.end();
-    }
-    if last < rest.len() {
-        spans.push(Span::raw(rest[last..].to_owned()));
-    }
+
     let mut content = vec![Span::raw(indicator), Span::raw(" ")];
     content.extend(spans);
     Line::from(content)
@@ -257,21 +281,28 @@ pub fn render_commits(
                         let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                         let style = if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                        if detailed_commit_view {
-                            // Render multi-line commit block
-                            let mut lines = Vec::new();
-                            let mut commit_lines = commit.lines();
-                            if let Some(first) = commit_lines.next() {
-                                // Highlight the first line (summary)
-                                lines.push(Line::from(vec![Span::raw(indicator.clone()), Span::raw(" "), Span::styled(first.to_string(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]));
+                        if detailed_commit_view && sel {
+                            let mut detail_parts = commit.splitn(2, '\n');
+                            let commit_line = detail_parts.next().unwrap_or("");
+                            let body = detail_parts.next().unwrap_or("");
+                            let rendered_line = render_commit_line(commit_line, indicator, sel, filter_by_user);
+                            let mut item = ListItem::new(rendered_line).style(style).bg(Color::DarkGray);
+                            items.push(item);
+                            for line in body.lines() {
+                                items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::raw(line)])));
                             }
-                            for line in commit_lines {
-                                lines.push(Line::from(format!("    {}", line)));
-                            }
-                            items.push(ListItem::new(lines).style(style));
                         } else {
-                            let line = render_commit_line(commit, indicator, sel);
-                            items.push(ListItem::new(line).style(style));
+                            let commit_line = if detailed_commit_view {
+                                commit.splitn(2, '\n').next().unwrap_or("")
+                            } else {
+                                commit
+                            };
+                            let rendered_line = render_commit_line(commit_line, indicator, sel, filter_by_user);
+                            let mut item = ListItem::new(rendered_line).style(style);
+                            if sel {
+                                item = item.bg(Color::DarkGray);
+                            }
+                            items.push(item);
                         }
                     }
                     offset += commits.len();
@@ -287,25 +318,17 @@ pub fn render_commits(
                 let mut sb = ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
             } else if let Some((_repo, commits)) = data.get(selected_repo_index) {
-                let items: Vec<ListItem> = commits.iter().enumerate().map(|(i, commit)|{
-                    let sel=Some(i)==selected_commit_index;
+                let items: Vec<ListItem> = commits.iter().enumerate().map(|(i, commit)| {
+                    let sel = Some(i) == selected_commit_index;
                     let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                     let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                    let style=if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                    if detailed_commit_view {
-                        let mut lines = Vec::new();
-                        let mut commit_lines = commit.lines();
-                        if let Some(first) = commit_lines.next() {
-                            lines.push(Line::from(vec![Span::raw(indicator.clone()), Span::raw(" "), Span::styled(first.to_string(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD))]));
-                        }
-                        for line in commit_lines {
-                            lines.push(Line::from(format!("    {}", line)));
-                        }
-                        ListItem::new(lines).style(style)
-                    } else {
-                        let line = render_commit_line(commit, indicator, sel);
-                        ListItem::new(line).style(style)
+                    let style = if sel {Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
+                    let rendered_line = render_commit_line(commit, indicator, sel, filter_by_user);
+                    let mut item = ListItem::new(rendered_line).style(style);
+                    if sel {
+                        item = item.bg(Color::DarkGray);
                     }
+                    item
                 }).collect();
                 let mut state=ListState::default(); state.select(selected_commit_index);
                 let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
@@ -359,7 +382,7 @@ pub fn render_commits(
                             let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
                             let indicator = format!("{}  ", star);
                             let style = Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD);
-                            let line = render_commit_line(commit, indicator, true);
+                            let line = render_commit_line(commit, indicator, true, filter_by_user);
                             items.push(ListItem::new(line).style(style));
                         }
                     }

@@ -57,14 +57,15 @@ pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bo
         cmd.arg("--format=%h %ad%n%B (%an)%n---GITBLOCK---");
     } else {
         cmd.arg("--date=format:%Y-%m-%d %H:%M");
-        cmd.arg("--pretty=format:%h %ad %s");
-
         if filter_by_user {
+            cmd.arg("--pretty=format:%h|%ad|%s");
             static USER_EMAIL: OnceLock<Option<String>> = OnceLock::new();
             let user = USER_EMAIL.get_or_init(|| get_current_git_user().ok());
             if let Some(user) = user {
                 cmd.arg("--author").arg(user);
             }
+        } else {
+            cmd.arg("--pretty=format:%h|%ad|%an|%s");
         }
     }
 
