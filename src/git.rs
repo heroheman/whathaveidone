@@ -41,15 +41,30 @@ pub fn get_current_git_user() -> Result<String> {
     }
 }
 
-pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bool, detailed: bool) -> Result<Vec<String>> {
-    let since = SystemTime::now() - interval;
-    let since_datetime: DateTime<Local> = since.into();
-    let since_str = since_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
-
+pub fn get_recent_commits(
+    repo: &PathBuf,
+    interval: Duration,
+    filter_by_user: bool,
+    detailed: bool,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<Vec<String>> {
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(repo)
-        .arg("log")
-        .arg("--since").arg(&since_str);
+    cmd.arg("-C")
+        .arg(repo)
+        .arg("log");
+
+    if let Some(from_date) = from {
+        cmd.arg("--since").arg(from_date);
+        if let Some(to_date) = to {
+            cmd.arg("--until").arg(to_date);
+        }
+    } else {
+        let since = SystemTime::now() - interval;
+        let since_datetime: DateTime<Local> = since.into();
+        let since_str = since_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+        cmd.arg("--since").arg(&since_str);
+    }
 
     if detailed {
         // Use a unique separator for robust splitting, and show date+time (hh:mm)
@@ -79,19 +94,6 @@ pub fn get_recent_commits(repo: &PathBuf, interval: Duration, filter_by_user: bo
     }
 }
 
-pub type CommitData = Vec<(PathBuf, Vec<String>)>;
-
-pub fn reload_commits(repos: &Vec<PathBuf>, duration: Duration, filter_by_user: bool, detailed: bool) -> Result<CommitData> {
-    let mut commits = vec![];
-    for repo in repos {
-        let repo_commits = get_recent_commits(repo, duration, filter_by_user, detailed)?;
-        if !repo_commits.is_empty() {
-            commits.push((repo.clone(), repo_commits));
-        }
-    }
-    Ok(commits)
-}
-
 pub fn get_commit_details(repo: &PathBuf, commit_hash: &str) -> Result<String> {
     let output = Command::new("git")
         .arg("-C").arg(repo)
@@ -109,4 +111,25 @@ pub fn get_commit_details(repo: &PathBuf, commit_hash: &str) -> Result<String> {
             String::from_utf8_lossy(&output.stderr)
         ))
     }
+}
+
+pub type CommitData = Vec<(PathBuf, Vec<String>)>;
+
+pub fn reload_commits(
+    repos: &Vec<PathBuf>,
+    duration: Duration,
+    filter_by_user: bool,
+    detailed: bool,
+    from: Option<String>,
+    to: Option<String>,
+) -> Result<CommitData> {
+    let mut commits = vec![];
+    for repo in repos {
+        let repo_commits =
+            get_recent_commits(repo, duration, filter_by_user, detailed, from.clone(), to.clone())?;
+        if !repo_commits.is_empty() {
+            commits.push((repo.clone(), repo_commits));
+        }
+    }
+    Ok(commits)
 }

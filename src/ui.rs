@@ -91,6 +91,8 @@ pub fn render_commits(
     selected_repo_index: usize,
     data: &CommitData,
     interval_label: &str,
+    from_date: &Option<String>,
+    to_date: &Option<String>,
     selected_commit_index: Option<usize>,
     show_details: bool,
     focus: FocusArea,
@@ -103,6 +105,13 @@ pub fn render_commits(
     selected_tab: CommitTab,
     detailed_commit_view: bool,
 ) {
+    let display_interval = if let (Some(from), to) = (from_date, to_date) {
+        let to_str = to.as_deref().unwrap_or("today");
+        format!("{} to {}", from, to_str)
+    } else {
+        interval_label.to_string()
+    };
+
     f.render_widget(Block::default().style(Style::default().bg(theme.root_bg)), f.area());
 
     let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
@@ -171,7 +180,7 @@ pub fn render_commits(
             all_style
         )]),
         Line::from(vec![Span::styled(
-            format!("  {} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, interval_label),
+            format!("  {} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, display_interval),
             Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC)
         )]),
         Line::from(vec![Span::raw("")]),
@@ -260,12 +269,12 @@ pub fn render_commits(
 
     // Header
     let header = if selected_repo_index==usize::MAX {
-        if filter_by_user { format!("Standup Commits (only mine) – {}", interval_label) }
-        else { format!("Standup Commits – {}", interval_label) }
+        if filter_by_user { format!("Standup Commits (only mine) – {}", display_interval) }
+        else { format!("Standup Commits – {}", display_interval) }
     } else if let Some((repo,_)) = data.get(selected_repo_index) {
         let name = repo.file_name().unwrap_or_default().to_string_lossy();
-        if filter_by_user { format!("{} (only mine) – {}", name, interval_label)} else {format!("{} – {}", name, interval_label)}
-    } else { format!("Standup Commits – {}", interval_label) };
+        if filter_by_user { format!("{} (only mine) – {}", name, display_interval)} else {format!("{} – {}", name, display_interval)}
+    } else { format!("Standup Commits – {}", display_interval) };
     let _header_style = Style::default().fg(bg_fg);
 
     // Render commit list depending on active tab
@@ -538,7 +547,7 @@ pub fn render_commits(
                 "Project".to_string()
             };
             let title = format!("\u{1F916}  AI Summary for {}", project);
-            let interval = format!("Interval: {}", interval_label);
+            let interval = format!("Interval: {}", display_interval);
             let x_button = Span::styled("[X]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
             let mut title_line = vec![
                 Span::styled(&title, theme.popup_title),

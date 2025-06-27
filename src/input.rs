@@ -32,6 +32,8 @@ pub fn handle_key(
     prompt_path: Option<&str>, // <-- add prompt_path argument
     gemini_model: &str, // <-- add gemini_model argument
     detailed_commit_view: &mut bool, // <-- add new argument
+    from_date: Option<String>,
+    to_date: Option<String>,
 ) -> Result<bool> {
     let lang = if lang.is_empty() { "english" } else { lang };
     match key {
@@ -50,7 +52,7 @@ pub fn handle_key(
         KeyCode::Char('w') => {
             *current_index = 3;
             *current_interval = intervals[*current_index].1;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view)?;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date, to_date)?;
             *selected_commit_index = None;
             // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
             if *selected_repo_index != usize::MAX {
@@ -101,7 +103,7 @@ pub fn handle_key(
                 *current_index = 0;
             }
             *current_interval = intervals[*current_index].1;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view)?;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date.clone(), to_date.clone())?;
             *selected_commit_index = None;
             // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
             if *selected_repo_index != usize::MAX {
@@ -120,7 +122,7 @@ pub fn handle_key(
                 *current_index = intervals.len() - 1;
             }
             *current_interval = intervals[*current_index].1;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view)?;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date, to_date)?;
             *selected_commit_index = None;
             // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
             if *selected_repo_index != usize::MAX {
@@ -261,7 +263,7 @@ pub fn handle_key(
         }
         KeyCode::Char('u') => {
             *filter_by_user = !*filter_by_user;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view)?;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date, to_date)?;
             *selected_commit_index=None;
             *detail_scroll=0;
             // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
@@ -436,7 +438,7 @@ pub fn handle_key(
         }
         KeyCode::Char('d') => {
             *detailed_commit_view = !*detailed_commit_view;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view)?;
+            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date, to_date)?;
         },
         _ => {}
     }

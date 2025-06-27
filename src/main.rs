@@ -12,7 +12,7 @@ mod theme;
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}, style::{self, Stylize}};
+use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}, style::Stylize};
 use ratatui::prelude::*;
 use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
@@ -72,7 +72,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let theme = Theme::default();
-    let (initial_interval, lang, prompt_path, cli_gemini_model) = parse_args();
+    let (initial_interval, lang, prompt_path, cli_gemini_model, from_date, to_date) = parse_args();
     let mut gemini_model = settings.gemini_model;
     if let Some(model) = cli_gemini_model {
         gemini_model = model;
@@ -91,7 +91,7 @@ fn main() -> anyhow::Result<()> {
     let mut current_interval = intervals[current_index].1;
     let mut filter_by_user = true;
     let mut detailed_commit_view = false;
-    let mut commits: CommitData = reload_commits(&repos, current_interval, filter_by_user, detailed_commit_view)?;
+    let mut commits: CommitData = reload_commits(&repos, current_interval, filter_by_user, detailed_commit_view, from_date.clone(), to_date.clone())?;
 
     let mut selected_repo_index = usize::MAX;
     let mut selected_commit_index: Option<usize> = None;
@@ -148,6 +148,8 @@ fn main() -> anyhow::Result<()> {
                 selected_repo_index,
                 &commits,
                 intervals[current_index].0,
+                &from_date,
+                &to_date,
                 selected_commit_index,
                 show_details,
                 focus,
@@ -188,6 +190,8 @@ fn main() -> anyhow::Result<()> {
                         prompt_path.as_deref(),
                         &gemini_model,
                         &mut detailed_commit_view,
+                        from_date.clone(),
+                        to_date.clone(),
                     )?;
                     if !handled {
                         break;
@@ -339,12 +343,14 @@ unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
     }
 }
 
-fn parse_args() -> (Duration, String, Option<String>, Option<String>) {
+fn parse_args() -> (Duration, String, Option<String>, Option<String>, Option<String>, Option<String>) {
     let args: Vec<String> = env::args().collect();
     let mut hours = 24;
     let mut lang = "en".to_string();
     let mut prompt_path: Option<String> = None;
     let mut gemini_model: Option<String> = None;
+    let mut from_date: Option<String> = None;
+    let mut to_date: Option<String> = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -353,6 +359,18 @@ fn parse_args() -> (Duration, String, Option<String>, Option<String>) {
             "72" => hours = 72,
             "week" => hours = 24 * 7,
             "month" => hours = 24 * 30,
+            "--from" => {
+                if i + 1 < args.len() {
+                    from_date = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            },
+            "--to" => {
+                if i + 1 < args.len() {
+                    to_date = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            },
             "--lang" => {
                 if i + 1 < args.len() {
                     lang = args[i + 1].clone();
@@ -375,5 +393,5 @@ fn parse_args() -> (Duration, String, Option<String>, Option<String>) {
         }
         i += 1;
     }
-    (Duration::from_secs(hours * 3600), lang, prompt_path, gemini_model)
+    (Duration::from_secs(hours * 3600), lang, prompt_path, gemini_model, from_date, to_date)
 }
