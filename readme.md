@@ -101,11 +101,18 @@ Alternativly: You can specify the start interval for commit history as parameter
 
 Example for 1 week in German:
 ```sh
-whathaveidone yesterday
-# or
-whathaveidone 48
-# or
 whathaveidone week --lang german
+```
+
+#### Custom Date Range
+You can specify a custom date range for the commit history using the `--from` and `--to` parameters. The date format is `YYYY-MM-DD`.
+
+- `--from YYYY-MM-DD`: Start date for the commit history.
+- `--to YYYY-MM-DD`: End date for the commit history. If not provided, it defaults to the current date.
+
+Example:
+```sh
+whathaveidone --from 2023-01-01 --to 2023-01-31
 ```
 
 ### Custom prompt
