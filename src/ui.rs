@@ -28,8 +28,18 @@ fn render_commit_line(commit: &str, indicator: String, _selected: bool) -> Line<
     if let Some(hash) = parts.next() {
         spans.push(Span::styled(hash.to_owned(), Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)));
     }
-    if let Some(second) = parts.next() {
-        spans.push(Span::raw(format!(" {}", second)));
+    if let Some(date) = parts.next() {
+        if let Some(time) = parts.next() {
+            spans.push(Span::styled(
+                format!(" {} {} ", date, time),
+                Style::default().fg(Color::Magenta),
+            ));
+        } else {
+            spans.push(Span::styled(
+                format!(" {} ", date),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
     }
     let rest: String = parts.collect::<Vec<_>>().join(" ");
     let mut last = 0;
