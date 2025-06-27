@@ -11,7 +11,7 @@ mod config;
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}};
+use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}, style::{self, Stylize}};
 use ratatui::prelude::*;
 use models::{FocusArea, PopupQuote};
 use git::{find_git_repos, reload_commits};
@@ -277,13 +277,14 @@ unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
     loop {
         // Clear the line and print the prompt
         execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
-        println!("No Gemini API key found.");
         
-        let yes_style = if selection == 0 { "[Yes]" } else { " Yes " };
-        let skip_style = if selection == 1 { "[Skip]" } else { " Skip " };
-        let never_style = if selection == 2 { "[Never Ask Again]" } else { " Never Ask Again " };
+        println!("{}", "No Gemini API key found.".yellow());
         
-        print!("Would you like to add one now? {} {} {}", yes_style, skip_style, never_style);
+        let yes_style = if selection == 0 { "[Yes]".green() } else { " Yes ".white() };
+        let skip_style = if selection == 1 { "[Skip]".red() } else { " Skip ".white() };
+        let never_style = if selection == 2 { "[Never Ask Again]".grey() } else { " Never Ask Again ".white() };
+        
+        println!("Would you like to add one now? {} {} {}", yes_style, skip_style, never_style);
         stdout.flush()?;
 
         enable_raw_mode()?;
@@ -303,7 +304,7 @@ unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
 
     if selection == 0 { // Yes
         execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
-        print!("Please enter your Gemini API key: ");
+        print!("{}", "Please enter your Gemini API key: ".cyan());
         stdout.flush()?;
 
         let mut key_input = String::new();
@@ -315,7 +316,7 @@ unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
         }
 
         config::save_api_key(key)?;
-        println!("\nAPI key saved to ~/.config/whid/whid.toml. Starting application...");
+        println!("\n{}", "API key saved to ~/.config/whid/whid.toml. Starting application...".green());
         std::thread::sleep(Duration::from_secs(2));
         Ok(true)
     } else if selection == 1 { // Skip
@@ -324,11 +325,11 @@ unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
     } else { // Never Ask Again
         config::disable_api_key_prompt()?;
         execute!(stdout, terminal::Clear(ClearType::All), crossterm::cursor::MoveTo(0,0))?;
-        println!("Understood. The API key prompt has been disabled.");
+        println!("{}", "Understood. The API key prompt has been disabled.".yellow());
         println!("You can add your key manually to your configuration file at:");
-        println!("{}", config::get_user_config_path().display());
+        println!("{}", config::get_user_config_path().display().to_string().cyan());
         println!("\nOr, set it as an environment variable: export GEMINI_API_KEY=your-key-here");
-        println!("\nStarting application...");
+        println!("\n{}", "Starting application...".white());
         std::thread::sleep(Duration::from_secs(4));
         Ok(false)
     }
