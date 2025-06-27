@@ -24,6 +24,36 @@ use utils::CommitData;
 use crate::config::Settings;
 use std::io::{self, Write};
 use crate::theme::Theme;
+use clap::Parser;
+
+/// A terminal tool to summarize your Git commit history for daily standups, using AI.
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Cli {
+    /// Time frame to load commits from: today (24h), yesterday (48h), 72h, week, month
+    #[arg(default_value = "today")]
+    timeframe: String,
+
+    /// The language for the AI summary
+    #[arg(long)]
+    lang: Option<String>,
+
+    /// Path to a custom prompt template file
+    #[arg(long)]
+    prompt: Option<String>,
+
+    /// The Gemini model to use for summaries (e.g., gemini-1.5-flash)
+    #[arg(long)]
+    model: Option<String>,
+
+    /// Start date for the commit history (YYYY-MM-DD)
+    #[arg(long, value_name = "YYYY-MM-DD")]
+    from: Option<String>,
+
+    /// End date for the commit history (YYYY-MM-DD), defaults to today
+    #[arg(long, value_name = "YYYY-MM-DD")]
+    to: Option<String>,
+}
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum CommitTab {
@@ -49,6 +79,7 @@ impl CommitTab {
 }
 
 fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
     let mut settings = Settings::new().expect("Failed to load settings");
 
     // Check for API key from config or environment variable
@@ -72,7 +103,20 @@ fn main() -> anyhow::Result<()> {
     }
 
     let theme = Theme::default();
-    let (initial_interval, lang, prompt_path, cli_gemini_model, from_date, to_date) = parse_args();
+    let hours = match cli.timeframe.as_str() {
+        "24" | "today" => 24,
+        "48" | "yesterday" => 48,
+        "72" => 72,
+        "week" => 24 * 7,
+        "month" => 24 * 30,
+        _ => cli.timeframe.parse::<u64>().unwrap_or(24),
+    };
+    let initial_interval = Duration::from_secs(hours * 3600);
+    let lang = cli.lang.unwrap_or_else(|| "en".to_string());
+    let prompt_path = cli.prompt;
+    let cli_gemini_model = cli.model;
+    let from_date = cli.from;
+    let to_date = cli.to;
     let mut gemini_model = settings.gemini_model;
     if let Some(model) = cli_gemini_model {
         gemini_model = model;
@@ -341,57 +385,4 @@ unsafe fn prompt_for_api_key() -> anyhow::Result<bool> {
         std::thread::sleep(Duration::from_secs(4));
         Ok(false)
     }
-}
-
-fn parse_args() -> (Duration, String, Option<String>, Option<String>, Option<String>, Option<String>) {
-    let args: Vec<String> = env::args().collect();
-    let mut hours = 24;
-    let mut lang = "en".to_string();
-    let mut prompt_path: Option<String> = None;
-    let mut gemini_model: Option<String> = None;
-    let mut from_date: Option<String> = None;
-    let mut to_date: Option<String> = None;
-    let mut i = 1;
-    while i < args.len() {
-        match args[i].as_str() {
-            "24" | "today" => hours = 24,
-            "48" | "yesterday" => hours = 48,
-            "72" => hours = 72,
-            "week" => hours = 24 * 7,
-            "month" => hours = 24 * 30,
-            "--from" => {
-                if i + 1 < args.len() {
-                    from_date = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            },
-            "--to" => {
-                if i + 1 < args.len() {
-                    to_date = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            },
-            "--lang" => {
-                if i + 1 < args.len() {
-                    lang = args[i + 1].clone();
-                    i += 1;
-                }
-            },
-            "--prompt" => {
-                if i + 1 < args.len() {
-                    prompt_path = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            },
-            "--model" => {
-                if i + 1 < args.len() {
-                    gemini_model = Some(args[i + 1].clone());
-                    i += 1;
-                }
-            },
-            _ => {}
-        }
-        i += 1;
-    }
-    (Duration::from_secs(hours * 3600), lang, prompt_path, gemini_model, from_date, to_date)
 }
