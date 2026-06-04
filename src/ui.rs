@@ -471,30 +471,57 @@ pub fn render_commits(
         }
     } 
 
-    // footer — only the keys relevant to the current context, so the line
-    // stays short enough to not get truncated.
-    let filter_label = if filter_by_user { "u: only mine" } else { "u: all" };
-    let detail_label = if detailed_commit_view { "d: details on" } else { "d: details off" };
-    let footer_text = if dim_bg {
+    // footer — colored state chips (timeframe / filter / detail toggle) make
+    // the active modes obvious at a glance, followed by the keys relevant to
+    // the focused area. Stays on one line; chips sit first so they survive a
+    // truncation on narrow terminals.
+    let footer_block = Block::default().borders(Borders::ALL);
+    if dim_bg {
         // A summary popup is open; it carries its own action hints.
-        "Esc close summary".to_string()
+        let footer = Paragraph::new("Esc close summary")
+            .block(footer_block)
+            .style(theme.footer.fg(theme.blurred_border));
+        f.render_widget(footer, layout.footer);
     } else {
-        match focus {
-            FocusArea::Sidebar => format!(
-                "↑/↓ repo | l/→ commits | Tab timeframe | a summary | {filter_label} | q quit"
-            ),
-            FocusArea::CommitList => format!(
-                "↑/↓ commit | Space details | m mark | s selection | a summary | {detail_label} | {filter_label} | q quit"
-            ),
-            FocusArea::Detail => {
-                "↑/↓ scroll | h/← back | Space close | a summary | q quit".to_string()
-            }
-        }
-    };
-    let footer = Paragraph::new(footer_text)
-        .block(Block::default().borders(Borders::ALL))
-        .style(if dim_bg { theme.footer.fg(theme.blurred_border) } else { theme.footer });
-    f.render_widget(footer, layout.footer);
+        // A filled background reads as "on" / active; dim text reads as "off".
+        let chip = |label: String, bg: Color| {
+            Span::styled(format!(" {label} "), Style::default().fg(Color::Black).bg(bg).add_modifier(Modifier::BOLD))
+        };
+        let gap = Span::raw(" ");
+
+        let tf_chip = chip(format!("\u{23F1} {display_interval}"), theme.focus_border); // ⏱
+        let filter_chip = if filter_by_user {
+            chip("\u{25C9} mine".into(), Color::Green) // ◉
+        } else {
+            chip("\u{25C9} all".into(), Color::Magenta)
+        };
+        let detail_chip = if detailed_commit_view {
+            chip("\u{25C9} details".into(), theme.text_highlight) // ◉
+        } else {
+            Span::styled(" \u{25CB} details ", Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)) // ○
+        };
+
+        let keys = match focus {
+            FocusArea::Sidebar =>
+                "\u{2191}/\u{2193} repo \u{00B7} \u{2192}/l commits \u{00B7} Tab timeframe \u{00B7} u mine/all \u{00B7} a summary \u{00B7} q quit",
+            FocusArea::CommitList =>
+                "\u{2191}/\u{2193} commit \u{00B7} Space details \u{00B7} m mark \u{00B7} s selection \u{00B7} u mine/all \u{00B7} d details \u{00B7} a summary \u{00B7} q quit",
+            FocusArea::Detail =>
+                "\u{2191}/\u{2193} scroll \u{00B7} \u{2190}/h back \u{00B7} Space close \u{00B7} a summary \u{00B7} q quit",
+        };
+
+        let line = Line::from(vec![
+            tf_chip,
+            gap.clone(),
+            filter_chip,
+            gap.clone(),
+            detail_chip,
+            Span::styled("  \u{2502} ", Style::default().fg(theme.blurred_border)), // │
+            Span::styled(keys, theme.footer),
+        ]);
+        let footer = Paragraph::new(line).block(footer_block);
+        f.render_widget(footer, layout.footer);
+    }
 
     // popup
     if let Some(arc) = popup_quote {
