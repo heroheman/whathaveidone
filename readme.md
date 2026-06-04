@@ -2,7 +2,13 @@
 
 A terminal tool to summarize your Git commit history for daily standups, using AI. Works with Google Gemini out of the box, or with any OpenAI-compatible API (OpenRouter, the Vercel AI Gateway, a local server, OpenAI itself, …).
 
-<a href="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq" target="_blank"><img src="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg" /></a>
+## Screenshots
+
+| Commits view | Commit detail |
+| :---: | :---: |
+| ![Commits view: repository sidebar and commit list with Timeframe / Selection tabs](images/screenshot1-overview.png) | ![Commit detail pane showing the full commit message and author](images/screenshot2-overview-detail.png) |
+| **Saved AI overviews** | **Stats dashboard** |
+| ![Overviews view: master/detail browser of saved AI summaries](images/screenshot3-overview-ai.png) | ![Full-screen stats dashboard: commits per day, weekday, hour, and per repo](images/screenshot4-stats.png) |
 
 ---
 
