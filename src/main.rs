@@ -164,31 +164,10 @@ fn main() -> anyhow::Result<()> {
     loop {
         if needs_redraw {
         terminal.draw(|f| {
-            // Compute layout to get sidebar_area
-            let area = f.area();
-            let vertical_chunks = ratatui::layout::Layout::default()
-                .direction(ratatui::layout::Direction::Vertical)
-                .constraints([ratatui::layout::Constraint::Min(1), ratatui::layout::Constraint::Length(3)]).split(area);
-            let columns = if show_details && selected_commit_index.is_some() {
-                ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Horizontal)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(30),
-                        ratatui::layout::Constraint::Percentage(60),
-                        ratatui::layout::Constraint::Percentage(40),
-                    ])
-                    .split(vertical_chunks[0])
-            } else {
-                ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Horizontal)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(30),
-                        ratatui::layout::Constraint::Min(1),
-                    ])
-                    .split(vertical_chunks[0])
-            };
-            let sidebar_area = columns[0];
-            last_sidebar_area = Some(sidebar_area);
+            // Remember the sidebar rect for mouse hit-testing (shared layout).
+            last_sidebar_area = Some(
+                ui::compute_layout(f.area(), show_details, selected_commit_index.is_some()).sidebar,
+            );
             render_commits(
                 f,
                 &theme,
@@ -260,37 +239,9 @@ fn main() -> anyhow::Result<()> {
                             sidebar_area,
                             &mut selected_tab,
                         );
-                        // Mouse support for commit list tabs
-                        // Calculate tab area (same as in ui.rs)
+                        // Mouse support for commit list tabs — same shared layout.
                         let area = terminal.get_frame().area();
-                        let vertical_chunks = ratatui::layout::Layout::default()
-                            .direction(ratatui::layout::Direction::Vertical)
-                            .constraints([ratatui::layout::Constraint::Min(1), ratatui::layout::Constraint::Length(3)]).split(area);
-                        let columns = if show_details && selected_commit_index.is_some() {
-                            ratatui::layout::Layout::default()
-                                .direction(ratatui::layout::Direction::Horizontal)
-                                .constraints([
-                                    ratatui::layout::Constraint::Length(30),
-                                    ratatui::layout::Constraint::Percentage(60),
-                                    ratatui::layout::Constraint::Percentage(40),
-                                ])
-                                .split(vertical_chunks[0])
-                        } else {
-                            ratatui::layout::Layout::default()
-                                .direction(ratatui::layout::Direction::Horizontal)
-                                .constraints([
-                                    ratatui::layout::Constraint::Length(30),
-                                    ratatui::layout::Constraint::Min(1),
-                                ])
-                                .split(vertical_chunks[0])
-                        };
-                        let commit_area = columns[1];
-                        let tabs_area = ratatui::prelude::Rect {
-                            x: commit_area.x,
-                            y: commit_area.y,
-                            width: commit_area.width,
-                            height: 3,
-                        };
+                        let tabs_area = ui::compute_layout(area, show_details, selected_commit_index.is_some()).tabs;
                         use crossterm::event::MouseEventKind;
                         if let MouseEventKind::Down(_) = mouse_event.kind {
                             let x = mouse_event.column;

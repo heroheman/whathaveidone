@@ -151,11 +151,6 @@ pub fn render_commits(
     let selected_set: std::collections::BTreeSet<String> = selected_commits
         .map(|arc| arc.lock_safe().set.keys().cloned().collect())
         .unwrap_or_default();
-    let area = f.area();
-    let vertical_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)]).split(area);
-
     // Determine if we should dim the background
     let dim_bg = popup_quote.is_some_and(|arc| arc.lock_safe().visible);
     let bg_fg = if dim_bg { theme.blurred_border } else { theme.text };
@@ -165,29 +160,11 @@ pub fn render_commits(
     let bg_yellow = if dim_bg { theme.blurred_border } else { theme.text_highlight };
     let _bg_red = if dim_bg { theme.blurred_border } else { Color::Red }; // Not in theme yet
 
-    // Main layout: sidebar, commits, optional detail
-    let columns = if show_details && selected_commit_index.is_some() {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(30),     // sidebar
-                Constraint::Percentage(60),   // commit list
-                Constraint::Percentage(40),   // detail view
-            ])
-            .split(vertical_chunks[0])
-    } else {
-        Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(30),     // sidebar
-                Constraint::Min(1),         // commit list only
-            ])
-            .split(vertical_chunks[0])
-    };
-    // Assign areas
-    let sidebar_area = columns[0];
-    let commit_area = columns[1];
-    let detail_area = if columns.len() > 2 { Some(columns[2]) } else { None };
+    // Single source of truth for the screen regions (shared with main.rs).
+    let layout = compute_layout(f.area(), show_details, selected_commit_index.is_some());
+    let sidebar_area = layout.sidebar;
+    let commit_area = layout.commit;
+    let detail_area = layout.detail;
 
     // Split sidebar area into sidebar and button box
     let sidebar_chunks = Layout::default()
@@ -288,13 +265,7 @@ pub fn render_commits(
         .select(selected_tab.as_index())
         .divider(symbols::DOT)
         .padding(" ", " ");
-    let tabs_area = Rect {
-        x: commit_area.x,
-        y: commit_area.y,
-        width: commit_area.width,
-        height: 3,
-    };
-    f.render_widget(tabs, tabs_area);
+    f.render_widget(tabs, layout.tabs);
 
     let list_area = Rect {
         x: commit_area.x,
@@ -530,7 +501,7 @@ pub fn render_commits(
     ))
     .block(Block::default().borders(Borders::ALL))
     .style(if dim_bg { theme.footer.fg(theme.blurred_border) } else { theme.footer });
-    f.render_widget(footer, vertical_chunks[1]);
+    f.render_widget(footer, layout.footer);
 
     // popup
     if let Some(arc) = popup_quote {
@@ -667,6 +638,41 @@ pub fn render_commits(
             f.render_widget(para, popup_area);
         }
     }
+}
+
+/// Screen regions for the main view, computed once so rendering and mouse
+/// hit-testing agree on the exact same rectangles.
+pub struct AppLayout {
+    pub sidebar: Rect,
+    pub commit: Rect,
+    pub detail: Option<Rect>,
+    pub tabs: Rect,
+    pub footer: Rect,
+}
+
+/// Computes the main layout. The detail column only appears when the detail
+/// pane is toggled on and a commit is selected.
+pub fn compute_layout(area: Rect, show_details: bool, has_selection: bool) -> AppLayout {
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .split(area);
+    let columns = if show_details && has_selection {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(30), Constraint::Percentage(60), Constraint::Percentage(40)])
+            .split(vertical[0])
+    } else {
+        Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Length(30), Constraint::Min(1)])
+            .split(vertical[0])
+    };
+    let sidebar = columns[0];
+    let commit = columns[1];
+    let detail = if columns.len() > 2 { Some(columns[2]) } else { None };
+    let tabs = Rect { x: commit.x, y: commit.y, width: commit.width, height: 3 };
+    AppLayout { sidebar, commit, detail, tabs, footer: vertical[1] }
 }
 
 /// Centers a rectangle within another rectangle.
