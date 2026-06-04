@@ -19,6 +19,7 @@ use git::{find_git_repos, reload_commits};
 use ui::render_commits;
 use crate::input::{handle_key, handle_mouse};
 use crate::models::SelectedCommits;
+use crate::models::LockExt;
 use std::collections::BTreeMap;
 use utils::CommitData;
 use crate::config::Settings;
@@ -156,7 +157,12 @@ fn main() -> anyhow::Result<()> {
 
     let mut last_sidebar_area = None;
     let mut selected_tab = CommitTab::Timeframe;
+    // Redraw only when something changed or a summary is loading (spinner), so
+    // the loop idles in event::poll instead of repainting ~33×/second.
+    let mut needs_redraw = true;
+    let mut prev_loading = false;
     loop {
+        if needs_redraw {
         terminal.draw(|f| {
             // Compute layout to get sidebar_area
             let area = f.area();
@@ -205,8 +211,11 @@ fn main() -> anyhow::Result<()> {
                 detailed_commit_view,
             );
         })?;
+            needs_redraw = false;
+        }
 
         if event::poll(poll_timeout)? {
+            needs_redraw = true;
             match event::read()? {
                 Event::Key(key_event) => {
                     let handled = handle_key(
@@ -310,6 +319,14 @@ fn main() -> anyhow::Result<()> {
                 _ => {}
             }
         }
+
+        // Keep repainting while a summary is loading (spinner) and once more
+        // when it finishes, so the final result is shown without another event.
+        let is_loading = popup_quote.lock_safe().loading;
+        if is_loading || is_loading != prev_loading {
+            needs_redraw = true;
+        }
+        prev_loading = is_loading;
     }
 
     terminal::disable_raw_mode()?;
