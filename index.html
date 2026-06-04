@@ -141,6 +141,17 @@
   .term-body .bul { color: var(--yellow); }
   .term-body pre { white-space: pre; margin: 0; }
 
+  /* real asciinema recording */
+  .cast {
+    display: block; margin-top: 56px; padding: 18px; border-radius: var(--radius);
+    background: var(--bg-soft); border: 1px solid var(--border);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.45); transition: border-color .15s, transform .15s;
+  }
+  .cast:hover { border-color: var(--accent); transform: translateY(-3px); text-decoration: none; }
+  .cast img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .cast-hint { display: block; text-align: center; margin-top: 14px; font-family:'JetBrains Mono'; font-size: .85rem; color: var(--fg-dim); }
+  .cast:hover .cast-hint { color: var(--accent); }
+
   /* ---------- sections ---------- */
   section { padding: 70px 0; border-top: 1px solid var(--border); }
   .sec-label { font-family:'JetBrains Mono'; font-size:.82rem; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
@@ -258,27 +269,11 @@
       <span class="tag">MIT licensed</span>
     </div>
 
-    <!-- terminal mock -->
-    <div class="term" aria-hidden="true">
-      <div class="term-bar">
-        <span class="c r"></span><span class="c y"></span><span class="c g"></span>
-        <span class="title">whid — ~/workspace</span>
-      </div>
-      <div class="term-body">
-<pre><span class="cm"># scan today's commits across every repo, summarize for standup</span>
-<span class="pl">❯</span> whid <span class="fl">--lang</span> english
-
-<span class="hd">── Overview ────────────────────────────────────────────</span>
-<span class="bul">•</span> <span class="hd">api-service</span> — finished the auth refactor: swapped session
-  cookies for short-lived JWTs and added refresh-token rotation.
-<span class="bul">•</span> <span class="hd">web-frontend</span> — wired the new login flow to the API and
-  fixed the redirect loop on expired sessions.
-<span class="bul">•</span> <span class="hd">infra</span> — bumped the CI runners to the cache-aware image,
-  cutting build times roughly in half.
-
-<span class="cm"># press  a  to (re)generate · c to copy · 2 to browse saved overviews</span></pre>
-      </div>
-    </div>
+    <!-- real recording -->
+    <a class="cast" href="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq" target="_blank" rel="noopener">
+      <img src="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg" alt="Recording of the whathaveidone terminal UI in action" loading="lazy" />
+      <span class="cast-hint">▸ Watch the full recording on asciinema ↗</span>
+    </a>
   </div>
 </header>
 
@@ -327,8 +322,10 @@
           <pre class="block"><span class="cm"># Gemini (default)</span>
 export GEMINI_API_KEY=your-key-here
 
-<span class="cm"># …or any OpenAI-compatible provider</span>
-export CUSTOM_API_KEY=your-key-here</pre>
+<span class="cm"># …or any OpenAI-compatible provider —</span>
+<span class="cm"># key via env, base URL via config or the --base-url flag</span>
+export CUSTOM_API_KEY=your-key-here
+whid <span class="fl">--provider</span> custom <span class="fl">--base-url</span> https://openrouter.ai/api/v1</pre>
         </div>
       </div>
       <div class="step">
@@ -480,7 +477,7 @@ lang = <span class="fl">"english"</span></pre>
     <div>
       <strong style="color:var(--fg);font-family:'JetBrains Mono';">❯ whathaveidone</strong><br />
       MIT licensed · built with Rust, Ratatui &amp; Crossterm by
-      <a href="https://github.com/heroheman" target="_blank" rel="noopener">Florenz Heldermann</a>
+      <a href="https://github.com/heroheman" target="_blank" rel="noopener">heroheman</a>
     </div>
     <div class="foot-links">
       <a href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">GitHub</a>
