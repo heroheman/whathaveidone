@@ -89,7 +89,7 @@ pub fn handle_key(
                         .and_then(|(repo, repo_commits)| repo_commits.get(idx).map(|c| (repo.clone(), c.clone())))
                 };
                 if let Some((repo, commit)) = found {
-                    let hash = commit.split_whitespace().next().unwrap_or("").to_string();
+                    let hash = crate::utils::commit_hash(&commit).to_string();
                     // Toggle: remove if already marked, otherwise insert.
                     if sel.set.remove(&hash).is_none() {
                         sel.set.insert(hash, (repo, commit));

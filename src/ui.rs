@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use crate::models::{FocusArea, PopupQuote};
 use crate::git::get_commit_details;
+use crate::utils::commit_hash;
 use crate::models::SelectedCommits;
 use crate::models::LockExt;
 use crate::CommitTab;
@@ -25,12 +26,30 @@ static TICKET_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Z]+-\d+").unwrap
 
 /// Renders a commit line with syntax highlighting and ticket detection.
 fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bool, detailed: bool, theme: &Theme) -> Line<'a> {
+    // Append a subject string, highlighting ticket references (e.g. ABC-123).
+    let push_subject = |spans: &mut Vec<Span<'a>>, subject: &str| {
+        let subject = subject.trim();
+        let mut last = 0;
+        for m in TICKET_REGEX.find_iter(subject) {
+            if m.start() > last {
+                spans.push(Span::raw(subject[last..m.start()].to_owned()));
+            }
+            spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), theme.commit_ticket));
+            last = m.end();
+        }
+        if last < subject.len() {
+            spans.push(Span::raw(subject[last..].to_owned()));
+        }
+    };
+
+    let mut spans = vec![Span::raw(indicator), Span::raw(" ")];
+
     // Detailed view: the first line is "<hash> <YYYY-MM-DD> <HH:MM>" (space
-    // separated, no '|'), the subject/body follow on subsequent lines.
+    // separated, no '|'); the subject is the next line, body lines follow.
     if detailed {
-        let first = commit.lines().next().unwrap_or(commit);
+        let mut lines = commit.lines();
+        let first = lines.next().unwrap_or(commit);
         let mut it = first.splitn(2, ' ');
-        let mut spans = vec![Span::raw(indicator), Span::raw(" ")];
         if let Some(hash) = it.next() {
             spans.push(Span::styled(hash.trim().to_owned(), theme.commit_hash));
         }
@@ -38,10 +57,15 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
             spans.push(Span::raw(" | "));
             spans.push(Span::styled(datetime.trim().to_owned(), theme.commit_datetime));
         }
+        if let Some(subject) = lines.next() {
+            if !subject.trim().is_empty() {
+                spans.push(Span::raw(" | "));
+                push_subject(&mut spans, subject);
+            }
+        }
         return Line::from(spans);
     }
 
-    let mut spans = vec![];
     let parts: Vec<&str> = if filter_by_user {
         commit.splitn(3, '|').collect()
     } else {
@@ -60,44 +84,19 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
 
     if filter_by_user {
         if let Some(subject_str) = parts.get(2) {
-            let subject = subject_str.trim();
-            let mut last = 0;
-            for m in TICKET_REGEX.find_iter(subject) {
-                if m.start() > last {
-                    spans.push(Span::raw(subject[last..m.start()].to_owned()));
-                }
-                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), theme.commit_ticket));
-                last = m.end();
-            }
-            if last < subject.len() {
-                spans.push(Span::raw(subject[last..].to_owned()));
-            }
+            push_subject(&mut spans, subject_str);
         }
     } else {
         if let Some(author) = parts.get(2) {
             spans.push(Span::styled(author.trim().to_owned(), theme.commit_author));
             spans.push(Span::raw(" | "));
         }
-        
         if let Some(subject_str) = parts.get(3) {
-            let subject = subject_str.trim();
-            let mut last = 0;
-            for m in TICKET_REGEX.find_iter(subject) {
-                if m.start() > last {
-                    spans.push(Span::raw(subject[last..m.start()].to_owned()));
-                }
-                spans.push(Span::styled(subject[m.start()..m.end()].to_owned(), theme.commit_ticket));
-                last = m.end();
-            }
-            if last < subject.len() {
-                spans.push(Span::raw(subject[last..].to_owned()));
-            }
+            push_subject(&mut spans, subject_str);
         }
     }
 
-    let mut content = vec![Span::raw(indicator), Span::raw(" ")];
-    content.extend(spans);
-    Line::from(content)
+    Line::from(spans)
 }
 
 /// Renders the commits view.
@@ -311,7 +310,7 @@ pub fn render_commits(
                     for (i, commit) in commits.iter().enumerate() {
                         let idx = offset + i;
                         let sel = Some(idx) == selected_commit_index;
-                        let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                        let star = if selected_set.contains(commit_hash(commit)) {"*"} else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                         let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
                         if detailed_commit_view && sel {
@@ -325,12 +324,9 @@ pub fn render_commits(
                                 items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::raw(line)])));
                             }
                         } else {
-                            let commit_line = if detailed_commit_view {
-                                commit.split('\n').next().unwrap_or("")
-                            } else {
-                                commit
-                            };
-                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, detailed_commit_view, theme);
+                            // render_commit_line handles both formats; in detailed
+                            // mode it shows hash + date + subject from the block.
+                            let rendered_line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
                             let mut item = ListItem::new(rendered_line).style(style);
                             if sel {
                                 item = item.bg(theme.selection_bg);
@@ -352,7 +348,7 @@ pub fn render_commits(
             } else if let Some((_repo, commits)) = data.get(selected_repo_index) {
                 let items: Vec<ListItem> = commits.iter().enumerate().map(|(i, commit)| {
                     let sel = Some(i) == selected_commit_index;
-                    let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
+                    let star = if selected_set.contains(commit_hash(commit)) {"*"} else {" "};
                     let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                     let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
                     let rendered_line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
@@ -476,7 +472,7 @@ pub fn render_commits(
                     // Show the full multi-line commit block as the detail
                     commit_line.clone()
                 } else {
-                    let hash = commit_line.split_whitespace().next().unwrap_or("");
+                    let hash = commit_hash(&commit_line);
                     get_commit_details(&repo_path, hash).unwrap_or_else(|e| e.to_string())
                 };
                 // clear detail region

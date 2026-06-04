@@ -6,6 +6,16 @@ use crate::git::get_commit_details;
 // Type alias for commit data for clarity
 pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 
+/// Extracts the short hash from a stored commit line.
+///
+/// The hash is the first token, terminated by `|` in the compact format
+/// (`"h|date|subject"`) or by whitespace in the detailed format (`"h date\n…"`).
+/// Splitting on whitespace alone is wrong because the date contains a space,
+/// which previously produced hashes like `086e74e|2026-06-04`.
+pub fn commit_hash(line: &str) -> &str {
+    line.split(|c: char| c == '|' || c.is_whitespace()).next().unwrap_or("")
+}
+
 pub fn get_active_commits(commits: &CommitData, selected_repo_index: usize) -> Option<&Vec<String>> {
     if selected_repo_index == usize::MAX {
         None
@@ -61,7 +71,7 @@ pub fn calculate_max_detail_scroll(
         for (repo, repo_commits) in commits {
             if commit_index < idx + repo_commits.len() {
                 let commit = &repo_commits[commit_index - idx];
-                let commit_hash = commit.split_whitespace().next().unwrap_or("");
+                let commit_hash = commit_hash(commit);
                 if !commit_hash.is_empty() {
                     match get_commit_details(repo, commit_hash) {
                         Ok(details) => return calculate_max_scroll(details, 15),
@@ -75,7 +85,7 @@ pub fn calculate_max_detail_scroll(
         return Ok(0);
     } else if let Some((repo, repo_commits)) = commits.get(selected_repo_index) {
         if let Some(commit) = repo_commits.get(commit_index) {
-            let commit_hash = commit.split_whitespace().next().unwrap_or("");
+            let commit_hash = commit_hash(commit);
             if !commit_hash.is_empty() {
                 match get_commit_details(repo, commit_hash) {
                     Ok(details) => return calculate_max_scroll(details, 15),
