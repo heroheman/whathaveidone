@@ -9,6 +9,7 @@ mod prompts;
 mod config;
 mod theme;
 mod history;
+mod stats;
 
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
@@ -73,31 +74,30 @@ struct Cli {
 enum CommitTab {
     Timeframe,
     Selection,
-    Stats,
 }
 impl CommitTab {
     fn as_index(self) -> usize {
         match self {
             CommitTab::Timeframe => 0,
             CommitTab::Selection => 1,
-            CommitTab::Stats => 2,
         }
     }
     fn from_index(idx: usize) -> Self {
         match idx {
             1 => CommitTab::Selection,
-            2 => CommitTab::Stats,
             _ => CommitTab::Timeframe,
         }
     }
 }
 
 /// Top-level screen. The overview view (reachable with `0`) fully replaces the
-/// commit browser layout with its own master/detail of stored AI overviews.
+/// commit browser layout with its own master/detail of stored AI overviews; the
+/// stats view (reachable with `3`) likewise owns the whole screen.
 #[derive(Copy, Clone, PartialEq, Eq)]
 enum AppView {
     Commits,
     Overview,
+    Stats,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -265,6 +265,7 @@ fn main() -> anyhow::Result<()> {
                 overview_focus,
                 overview_detail_scroll,
                 show_help,
+                app_view == AppView::Stats,
             );
         })?;
             needs_redraw = false;
@@ -343,6 +344,8 @@ fn main() -> anyhow::Result<()> {
                                         &mut overview_detail_scroll,
                                     );
                                 }
+                                // Stats is a read-only dashboard; nothing scrolls.
+                                AppView::Stats => {}
                             }
                         }
                         // Clicks only drive the commit browser.

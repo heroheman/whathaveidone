@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, BorderType, Padding, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear},
+    widgets::{Block, Borders, BorderType, Padding, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear, BarChart, Sparkline},
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Line},
@@ -143,6 +143,7 @@ pub fn render_commits(
     overview_focus: OverviewFocus,
     overview_detail_scroll: u16,
     show_help: bool,
+    show_stats: bool,
 ) {
     let display_interval = if let (Some(from), to) = (from_date, to_date) {
         let to_str = to.as_deref().unwrap_or("today");
@@ -157,6 +158,16 @@ pub fn render_commits(
     if show_overview {
         render_overview(f, theme, overview_state, overview_selected, overview_focus, overview_detail_scroll, &display_interval, filter_by_user);
         if show_help { render_help_overlay(f, theme, true); }
+        return;
+    }
+
+    // The stats dashboard likewise owns the whole screen, recomputed live from
+    // the commits currently loaded for the active timeframe/filter.
+    if show_stats {
+        let stats = crate::stats::compute_stats(data, filter_by_user, detailed_commit_view, selected_repo_index);
+        let overview_count = overview_state.lock_safe().items.len();
+        render_stats(f, theme, &stats, &display_interval, filter_by_user, overview_count);
+        if show_help { render_help_overlay(f, theme, false); }
         return;
     }
 
@@ -416,33 +427,6 @@ pub fn render_commits(
                         .highlight_style(commit_highlight_style(theme));
                     f.render_stateful_widget(list, list_area, &mut state);
                 }
-            }
-        }
-        CommitTab::Stats => {
-            // Render a 2x2 grid of 4 boxes with icons and color
-            let grid = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(list_area);
-            let top = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(grid[0]);
-            let bottom = Layout::default()
-                .direction(Direction::Horizontal)
-                .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .split(grid[1]);
-            let boxes = [top[0], top[1], bottom[0], bottom[1]];
-            let icons = ["\u{1F4C8}", "\u{1F465}", "\u{1F4C6}", "\u{1F4CB}"]; // 📈 👥 📆 📋
-            let titles = ["Commits", "Authors", "Days", "Summary"];
-            let colors = [Color::Green, Color::Cyan, Color::Yellow, Color::Magenta];
-            for (i, area) in boxes.iter().enumerate() {
-                let block = Block::default()
-                    .title(format!("{}  {}", icons[i], titles[i]))
-                    .borders(Borders::ALL)
-                    .border_type(BorderType::Rounded)
-                    .style(Style::default().fg(colors[i]));
-                f.render_widget(block, *area);
             }
         }
     }
@@ -725,6 +709,219 @@ fn render_overview(
     f.render_widget(footer, footer_area);
 }
 
+/// Full-screen statistics dashboard. Pure painter: all aggregates are computed
+/// upstream by `stats::compute_stats` from the live commit data, so the charts
+/// reflect the active timeframe/filter and update on every redraw.
+fn render_stats(
+    f: &mut Frame,
+    theme: &Theme,
+    stats: &crate::stats::CommitStats,
+    interval_label: &str,
+    filter_by_user: bool,
+    overview_count: usize,
+) {
+    f.render_widget(Block::default().style(Style::default().bg(theme.root_bg)), f.area());
+
+    // Top bar (1) + content + footer (3), like the overview view.
+    let rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Min(1), Constraint::Length(3)])
+        .split(f.area());
+    render_top_bar(f, theme, rows[0], TopView::Stats, overview_count, interval_label, filter_by_user);
+    let content = rows[1];
+    let footer_area = rows[2];
+
+    // Footer hint (mirrors the overview footer styling).
+    let footer = Paragraph::new(
+        "1/2/3 views \u{00B7} [ ] timeframe \u{00B7} u mine/all \u{00B7} d detailed \u{00B7} ? help \u{00B7} q quit",
+    )
+    .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded))
+    .style(theme.footer);
+    f.render_widget(footer, footer_area);
+
+    // A rounded, unfocused pane used for every chart box.
+    let pane = |title: &str| Block::default()
+        .title(format!("  {title}"))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .padding(Padding::horizontal(1))
+        .border_style(Style::default().fg(theme.blurred_border))
+        .title_style(Style::default().fg(theme.text_secondary));
+
+    // Vertical split: number cards, the daily trend, then the per-X trio.
+    let body = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(5), Constraint::Percentage(45), Constraint::Min(6)])
+        .split(content);
+
+    // --- Number cards ---
+    let card_areas = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Ratio(1, 5); 5])
+        .split(body[0]);
+    let busiest = stats
+        .busiest_day
+        .as_ref()
+        .map(|(d, c)| format!("{} ({})", &d[d.len().saturating_sub(5)..], c))
+        .unwrap_or_else(|| "–".to_string());
+    let cards: [(&str, String); 5] = [
+        ("Commits", stats.total_commits.to_string()),
+        ("Active days", stats.active_days.to_string()),
+        ("Avg / day", format!("{:.1}", stats.avg_per_active_day)),
+        ("Busiest", busiest),
+        ("Repos", stats.repo_count.to_string()),
+    ];
+    for (area, (title, value)) in card_areas.iter().zip(cards.iter()) {
+        let block = pane(title);
+        let inner = block.inner(*area);
+        f.render_widget(block, *area);
+        let para = Paragraph::new(Line::from(Span::styled(
+            value.clone(),
+            Style::default().fg(theme.text_highlight).add_modifier(Modifier::BOLD),
+        )))
+        .alignment(Alignment::Center);
+        // Vertically centre the number within the card body.
+        let vcenter = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(0), Constraint::Length(1), Constraint::Min(0)])
+            .split(inner);
+        f.render_widget(para, vcenter[1]);
+    }
+
+    // Empty timeframe: cards already show zeros; replace the charts with a hint.
+    if stats.is_empty() {
+        let block = pane("Commits per day");
+        let inner = block.inner(body[1]);
+        f.render_widget(block, body[1]);
+        let hint = Paragraph::new("No commits in this timeframe. Press [ ] to change the window.")
+            .alignment(Alignment::Center)
+            .style(Style::default().fg(theme.text_secondary));
+        f.render_widget(hint, inner);
+        return;
+    }
+
+    // --- Commits per day: BarChart, or Sparkline when too many days to fit ---
+    {
+        let block = pane("Commits per day");
+        let inner = block.inner(body[1]);
+        f.render_widget(block, body[1]);
+        let n = stats.per_day.len();
+        if n * 2 > inner.width as usize {
+            // Too many bars to label — fall back to a compact trend line.
+            let data: Vec<u64> = stats.per_day.iter().map(|(_, c)| *c).collect();
+            let spark = Sparkline::default()
+                .data(data)
+                .style(Style::default().fg(theme.focus_border));
+            f.render_widget(spark, inner);
+        } else {
+            // "MM-DD" labels; build owned strings the BarChart can borrow.
+            let labels: Vec<String> = stats
+                .per_day
+                .iter()
+                .map(|(d, _)| d[d.len().saturating_sub(5)..].to_string())
+                .collect();
+            let data: Vec<(&str, u64)> = labels
+                .iter()
+                .zip(stats.per_day.iter())
+                .map(|(l, (_, c))| (l.as_str(), *c))
+                .collect();
+            let bar_width = ((inner.width as usize / n.max(1)).saturating_sub(1)).clamp(1, 6) as u16;
+            let chart = BarChart::default()
+                .data(&data)
+                .bar_width(bar_width)
+                .bar_gap(1)
+                .bar_style(Style::default().fg(theme.focus_border))
+                .value_style(Style::default().fg(theme.root_bg).bg(theme.focus_border).add_modifier(Modifier::BOLD))
+                .label_style(Style::default().fg(theme.text_secondary));
+            f.render_widget(chart, inner);
+        }
+    }
+
+    // --- Trio: weekday, hour, repo/authors ---
+    let trio = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(34)])
+        .split(body[2]);
+
+    // Weekday bars (Mon–Sun).
+    {
+        let block = pane("Per weekday");
+        let inner = block.inner(trio[0]);
+        f.render_widget(block, trio[0]);
+        let names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+        let data: Vec<(&str, u64)> = names.iter().zip(stats.per_weekday.iter()).map(|(n, c)| (*n, *c)).collect();
+        let bar_width = ((inner.width as usize / 7).saturating_sub(1)).clamp(1, 5) as u16;
+        let chart = BarChart::default()
+            .data(&data)
+            .bar_width(bar_width)
+            .bar_gap(1)
+            .bar_style(Style::default().fg(theme.detail_border))
+            .value_style(Style::default().fg(theme.root_bg).bg(theme.detail_border).add_modifier(Modifier::BOLD))
+            .label_style(Style::default().fg(theme.text_secondary));
+        f.render_widget(chart, inner);
+    }
+
+    // Per-hour activity (0–23) as a sparkline — too many bars to label.
+    {
+        let block = pane("Per hour (0\u{2013}23)");
+        let inner = block.inner(trio[1]);
+        f.render_widget(block, trio[1]);
+        let data: Vec<u64> = stats.per_hour.to_vec();
+        let spark = Sparkline::default()
+            .data(data)
+            .style(Style::default().fg(theme.detail_border));
+        // Reserve the bottom line for a 0 / 6 / 12 / 18 / 23 axis hint.
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(inner);
+        f.render_widget(spark, split[0]);
+        f.render_widget(
+            Paragraph::new("0      6      12      18    23").style(Style::default().fg(theme.text_secondary)),
+            split[1],
+        );
+    }
+
+    // Per-repo distribution + top authors as text rows with mini bars.
+    {
+        let block = pane("Per repo \u{00B7} authors");
+        let inner = block.inner(trio[2]);
+        f.render_widget(block, trio[2]);
+        let max_count = stats.per_repo.iter().map(|(_, c)| *c).max().unwrap_or(1).max(1);
+        let bar_cells = 10usize;
+        let mut lines: Vec<Line> = Vec::new();
+        for (name, count) in stats.per_repo.iter().take(5) {
+            let filled = ((*count as usize * bar_cells) / max_count as usize).max(1);
+            let bar: String = "\u{2588}".repeat(filled) + &"\u{2591}".repeat(bar_cells - filled);
+            let short: String = name.chars().take(14).collect();
+            lines.push(Line::from(vec![
+                Span::styled(format!("{:<14} ", short), Style::default().fg(theme.text)),
+                Span::styled(bar, Style::default().fg(theme.focus_border)),
+                Span::styled(format!(" {count}"), theme.repo_commit_count),
+            ]));
+        }
+        lines.push(Line::from(Span::styled(
+            "\u{2500}".repeat(inner.width.max(1) as usize),
+            Style::default().fg(theme.blurred_border),
+        )));
+        if stats.per_author.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "Authors: press u (all) or d (detailed)",
+                Style::default().fg(theme.text_secondary),
+            )));
+        } else {
+            for (name, count) in stats.per_author.iter().take(5) {
+                let short: String = name.chars().take(20).collect();
+                lines.push(Line::from(vec![
+                    Span::styled(format!("{:<20} ", short), theme.commit_author),
+                    Span::styled(format!("{count}"), theme.repo_commit_count),
+                ]));
+            }
+        }
+        f.render_widget(Paragraph::new(lines), inner);
+    }
+}
+
 /// Screen regions for the main view, computed once so rendering and mouse
 /// hit-testing agree on the exact same rectangles.
 pub struct AppLayout {
@@ -772,6 +969,7 @@ pub fn compute_layout(area: Rect, show_details: bool, has_selection: bool) -> Ap
 pub enum TopView {
     Commits,
     Overviews,
+    Stats,
 }
 
 /// Renders the persistent top bar: the view switcher on the left and global
@@ -802,6 +1000,8 @@ fn render_top_bar(
         view_chip("\u{25A3} Commits", "1", active == TopView::Commits, false), // ▣
         Span::raw(" "),
         view_chip("\u{25A2} Overviews", "2", active == TopView::Overviews, overview_count == 0), // ▢
+        Span::raw(" "),
+        view_chip("\u{25A4} Stats", "3", active == TopView::Stats, false), // ▤
     ]);
 
     let filter = if filter_by_user { "\u{25C9} mine" } else { "\u{25C9} all" }; // ◉
@@ -881,7 +1081,7 @@ fn render_help_overlay(f: &mut Frame, theme: &Theme, for_overview: bool) {
 
     let mut lines = vec![
         head("Global"),
-        row("1 / 2", "switch view: Commits / Overviews"),
+        row("1 / 2 / 3", "switch view: Commits / Overviews / Stats"),
         row("Tab / ⇧Tab", "move focus between panes"),
         row("← → / h l", "move focus left / right"),
         row("↑ ↓ / j k", "navigate / scroll in the focused pane"),

@@ -121,6 +121,11 @@ pub fn handle_key(
             *focus = FocusArea::Sidebar;
             return Ok(true);
         }
+        KeyCode::Char('3') => {
+            // Full-screen stats dashboard, computed live from the loaded commits.
+            *app_view = crate::AppView::Stats;
+            return Ok(true);
+        }
         KeyCode::Char('2') | KeyCode::Char('0') => {
             // Open the overview view if one exists (or is being generated);
             // otherwise it stays disabled and nothing happens.
@@ -146,6 +151,20 @@ pub fn handle_key(
         return handle_overview_key(
             key, overview_state, rt, app_view, overview_selected, overview_focus, overview_detail_scroll,
         );
+    }
+
+    // The stats dashboard is read-only: only timeframe (`[`/`]`/`w`) and filter
+    // (`u`/`d`) keys are live — they reload `commits`, and the charts recompute
+    // from it on the next redraw. Everything else is ignored so browser-only
+    // keys (selection, focus, summary) can't act on a hidden commit list.
+    if *app_view == crate::AppView::Stats
+        && !matches!(
+            key,
+            KeyCode::Char('[') | KeyCode::Char(']') | KeyCode::Char('w')
+                | KeyCode::Char('u') | KeyCode::Char('d')
+        )
+    {
+        return Ok(true);
     }
 
     match key {
@@ -431,9 +450,6 @@ pub fn handle_key(
                         .join("\n");
                     ("Selection".to_string(), commit_str, sel.set.len())
                 }
-                crate::CommitTab::Stats => {
-                    ("Stats".to_string(), String::new(), 0)
-                }
             };
             let prompt = match &loaded_template {
                 Some((_path, Ok(template))) => template
@@ -466,7 +482,6 @@ pub fn handle_key(
                 tab: match selected_tab {
                     crate::CommitTab::Timeframe => "Timeframe",
                     crate::CommitTab::Selection => "Selection",
-                    crate::CommitTab::Stats => "Stats",
                 }.to_string(),
             };
             // Under `--debug` the transient line carries prompt-construction
@@ -613,7 +628,7 @@ pub fn handle_mouse(
                 // Selection list uses a header-interleaved, path-sorted layout
                 // whose index space differs from the timeframe view; just focus
                 // it rather than guessing a wrong commit index.
-                crate::CommitTab::Selection | crate::CommitTab::Stats => {}
+                crate::CommitTab::Selection => {}
             }
         }
     }
