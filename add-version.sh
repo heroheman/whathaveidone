@@ -4,11 +4,10 @@
 # add_version.sh - Version Management Script
 # ============================================================================
 #
-# This script automates version bumping and release tagging for this Nuxt project.
-# It reads/writes versions from package.json, creates git tags, and updates the changelog.
+# This script automates version bumping and release tagging for this Rust project.
+# It reads/writes versions from Cargo.toml, creates git tags, and updates the changelog.
 #
 # Prerequisites:
-# - jq (install via: brew install jq)
 # - git cliff (install via: brew install git-cliff)
 #
 # Usage:
@@ -19,7 +18,7 @@
 #   ./add_version.sh --version X.Y.Z    # Set specific version (e.g., 1.2.3)
 #
 # What it does:
-#   1. Increments version in package.json (adds +gitcount as build number)
+#   1. Increments version in Cargo.toml
 #   2. Asks for confirmation
 #   3. Commits the version change
 #   4. Creates a git tag (e.g., v0.2.2)
@@ -29,16 +28,52 @@
 #
 # ============================================================================
 
-path_to_package="package.json"
+# Path to Cargo package manifest
+path_to_manifest="Cargo.toml"
 
-# Check if jq is installed
-if ! command -v jq &> /dev/null; then
-    echo "Error: jq is required but not installed. Install it with: brew install jq"
+# Check if Cargo.toml exists
+if [ ! -f "$path_to_manifest" ]; then
+    echo "Error: $path_to_manifest not found"
     exit 1
 fi
 
-current_version=$(jq -r '.version' $path_to_package)
+# Extract version from [package] section in Cargo.toml
+current_version=$(awk '
+    /^\[package\]$/ { in_package = 1; next }
+    /^\[/ { if (in_package) exit }
+    in_package && $1 == "version" {
+        gsub(/"/, "", $3)
+        print $3
+        exit
+    }
+' "$path_to_manifest")
+
+if [ -z "$current_version" ]; then
+    echo "Error: Could not read version from $path_to_manifest"
+    exit 1
+fi
+
 current_version_without_build=$(echo "$current_version" | sed 's/\+.*//')
+
+set_manifest_version() {
+    local version="$1"
+    awk -v version="$version" '
+        BEGIN { in_package = 0; updated = 0 }
+        /^\[package\]$/ { in_package = 1; print; next }
+        /^\[/ { in_package = 0 }
+        in_package && $1 == "version" && updated == 0 {
+            print "version = \"" version "\""
+            updated = 1
+            next
+        }
+        { print }
+        END {
+            if (updated == 0) {
+                exit 1
+            }
+        }
+    ' "$path_to_manifest" > "tmp.$$.toml" && mv "tmp.$$.toml" "$path_to_manifest"
+}
 
 # Parse current semver version
 IFS='.' read -r major minor patch <<< "$current_version_without_build"
@@ -93,10 +128,14 @@ fi
 gitcount=`git log | grep "^commit" | wc -l | xargs`
 # new_version="$new_base_version+$gitcount"
 new_version="$new_base_version"
-echo "Setting package.json version $current_version to $new_version"
+echo "Setting Cargo.toml version $current_version to $new_version"
 
-# Update version in package.json using jq
-jq --arg version "$new_version" '.version = $version' $path_to_package > tmp.$$.json && mv tmp.$$.json $path_to_package
+# Update version in Cargo.toml
+if ! set_manifest_version "$new_version"; then
+    echo "Error: Failed to write version to $path_to_manifest"
+    rm -f "tmp.$$.toml"
+    exit 1
+fi
 
 # Ask user for confirmation
 echo ""
@@ -104,9 +143,9 @@ echo "❓ Is version $new_base_version correct? (y/n)"
 read -r confirmation
 
 if [[ "$confirmation" != "y" && "$confirmation" != "Y" ]]; then
-    echo "❌ Aborted - Reverting changes..."
-    # Revert package.json changes
-    jq --arg version "$current_version" '.version = $version' $path_to_package > tmp.$$.json && mv tmp.$$.json $path_to_package
+    echo "Aborted - Reverting changes..."
+    # Revert Cargo.toml changes
+    set_manifest_version "$current_version"
     exit 1
 fi
 
@@ -123,9 +162,9 @@ git cliff --output CHANGELOG.md
 # echo "Committing changelog..."
 # git commit -am "chore: changelog update"
 
-# Stage and commit package.json changes
-echo "Staging and committing package.json..."
-git add $path_to_package
+# Stage and commit Cargo.toml changes
+echo "Staging and committing Cargo.toml..."
+git add "$path_to_manifest"
 git commit -am "chore: bump version to $new_base_version"
 
 # Push tag to origin
