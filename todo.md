@@ -37,19 +37,19 @@ Sortiert nach Priorität. Verbesserungsvorschläge (Architektur) sind ans Ende v
 
 Der Kern-Flow *Commits auswählen → Zusammenfassung erzeugen → kopieren* hat zu viele Schritte und zwei parallele Wege.
 
-- [ ] D1 — **Kopier-Feedback.** `c` kopiert still in die Zwischenablage, kein Hinweis. Kurzer Toast/Statuszeile „✓ In Zwischenablage kopiert".
-- [ ] D2 — **Redundante Selektion entfernen.** Selection-Tab [3] *und* `s`-Popup zeigen beide die Markierungen. `s`-Popup streichen, nur den Tab behalten.
-- [ ] D3 — **Auto-Copy / Enter.** Nach der Summary ist der nächste Schritt fast immer `c`. `Enter` im Popup = kopieren + schließen.
-- [ ] D4 — **Loading-Popup entrümpeln.** Debug-Variablen (`from/to/project/gemini_model/commits…`) hinter ein `--debug`-Flag; für Nutzer nur „🤖 Fasse N Commits aus M Projekten zusammen…".
-- [ ] D5 — **Abbrechen/Regenerieren.** Laufenden Request mit `Esc` canceln, fertige Summary mit `r` neu generieren.
+- [x] D1 — **Kopier-Feedback.** Popup-Fußzeile bestätigt „✓ Copied to clipboard" nach `c`.
+- [x] D2 — **Redundante Selektion entfernt.** `s`-Popup gestrichen; `s` springt jetzt in den Selection-Tab.
+- [x] D3 — **Auto-Copy / Enter.** `Enter` im Popup kopiert + schließt in einem Schritt.
+- [x] D4 — **Loading-Popup entrümpelt.** Debug-Variablen hinter `--debug`; sonst „Summarizing N commits from {project}…".
+- [x] D5 — **Abbrechen/Regenerieren.** `Esc` canceln (löst Spinner-Loop + droppt das fetch-Future), `r` regeneriert die letzte Summary.
 
 ## Phase E — Layout (UI/UX)
 
-- [ ] E1 — **Sidebar 1 Zeile/Repo** statt 3 (Name + Count zusammen). Mehr sichtbare Repos; vereinfacht das `*3+2`-Index- und Maus-Hit-Test-Rechnen.
-- [ ] E2 — **Responsive Sidebar-Breite** statt feste 30 Spalten (Min/Max relativ zur Terminalbreite).
-- [ ] E3 — **Kontextabhängige Footer-Hints** statt einer überladenen, abgeschnittenen Zeile (nur relevante Tasten je nach Fokus/Popup).
+- [x] E1 — **Sidebar 1 Zeile/Repo** (Name + Count). `ListState`-Index korrigiert (`i+2` statt fehlerhaftem `*3+2`), Auto-Scroll funktioniert; Maus-Hit-Test angepasst.
+- [x] E2 — **Responsive Sidebar-Breite** (~¼ der Terminalbreite, geklemmt auf 22–36), Divider skaliert mit.
+- [x] E3 — **Kontextabhängige Footer-Hints** je nach Fokus (Sidebar/Liste/Detail) bzw. offenem Popup.
 - [ ] E4 — **Stats-Tab** echt befüllen oder ganz entfernen. **VERTAGT** (später).
-- [ ] E5 — **Detail-Pane sauber clearen** statt manuellem Blanking mit Leerzeichen.
+- [x] E5 — **Detail-Pane** nutzt jetzt `block.inner()` statt manuellem Space-Blanking.
 
 ---
 
