@@ -99,6 +99,23 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
     Line::from(spans)
 }
 
+/// Builds the list rows for one commit: the highlighted summary line, plus a
+/// short preview of the first body lines in detailed mode. Returned as the
+/// lines of a single multi-line `ListItem` so the selection index stays aligned
+/// (one item per commit). Full details remain available via the Space pane.
+fn commit_item_lines<'a>(commit: &'a str, indicator: String, filter_by_user: bool, detailed: bool, theme: &Theme) -> Vec<Line<'a>> {
+    let mut lines = vec![render_commit_line(commit, indicator, filter_by_user, detailed, theme)];
+    if detailed {
+        for line in commit.lines().skip(2).map(str::trim).filter(|l| !l.is_empty()).take(2) {
+            lines.push(Line::from(vec![
+                Span::raw("      "),
+                Span::styled(line.to_owned(), Style::default().fg(theme.text_secondary)),
+            ]));
+        }
+    }
+    lines
+}
+
 /// Renders the commits view.
 pub fn render_commits(
     f: &mut Frame,
@@ -313,26 +330,12 @@ pub fn render_commits(
                         let star = if selected_set.contains(commit_hash(commit)) {"*"} else {" "};
                         let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                         let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                        if detailed_commit_view && sel {
-                            let mut detail_parts = commit.splitn(2, '\n');
-                            let commit_line = detail_parts.next().unwrap_or("");
-                            let body = detail_parts.next().unwrap_or("");
-                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, detailed_commit_view, theme);
-                            let item = ListItem::new(rendered_line).style(style).bg(theme.selection_bg);
-                            items.push(item);
-                            for line in body.lines() {
-                                items.push(ListItem::new(Line::from(vec![Span::raw("  "), Span::raw(line)])));
-                            }
-                        } else {
-                            // render_commit_line handles both formats; in detailed
-                            // mode it shows hash + date + subject from the block.
-                            let rendered_line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
-                            let mut item = ListItem::new(rendered_line).style(style);
-                            if sel {
-                                item = item.bg(theme.selection_bg);
-                            }
-                            items.push(item);
+                        let item_lines = commit_item_lines(commit, indicator, filter_by_user, detailed_commit_view, theme);
+                        let mut item = ListItem::new(item_lines).style(style);
+                        if sel {
+                            item = item.bg(theme.selection_bg);
                         }
+                        items.push(item);
                     }
                     offset += commits.len();
                 }
@@ -351,8 +354,8 @@ pub fn render_commits(
                     let star = if selected_set.contains(commit_hash(commit)) {"*"} else {" "};
                     let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                     let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                    let rendered_line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
-                    let mut item = ListItem::new(rendered_line).style(style);
+                    let item_lines = commit_item_lines(commit, indicator, filter_by_user, detailed_commit_view, theme);
+                    let mut item = ListItem::new(item_lines).style(style);
                     if sel {
                         item = item.bg(theme.selection_bg);
                     }
@@ -468,13 +471,10 @@ pub fn render_commits(
                         (PathBuf::new(), String::new())
                     }
                 };
-                let details = if detailed_commit_view {
-                    // Show the full multi-line commit block as the detail
-                    commit_line.clone()
-                } else {
-                    let hash = commit_hash(&commit_line);
-                    get_commit_details(&repo_path, hash).unwrap_or_else(|e| e.to_string())
-                };
+                // Space always shows the full `git show` output, independent of
+                // the detailed-list toggle.
+                let hash = commit_hash(&commit_line);
+                let details = get_commit_details(&repo_path, hash).unwrap_or_else(|e| e.to_string());
                 // clear detail region
                 f.render_widget(Clear, detail_chunk);
                 // draw border around detail
