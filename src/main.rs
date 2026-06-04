@@ -8,6 +8,7 @@ mod input;
 mod prompts;
 mod config;
 mod theme;
+mod history;
 
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
