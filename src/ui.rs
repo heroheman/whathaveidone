@@ -253,11 +253,29 @@ pub fn render_commits(
         .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
         .split(commit_area);
 
-    // Tabs for commit list (refactored)
+    // Tabs for commit list. The overview entry sits right-aligned in the same
+    // box as a top-level view switch ([0]); it is dimmed until one exists.
+    let overview_count = overview_state.lock_safe().items.len();
+    let overview_title = if overview_count > 0 {
+        Line::from(vec![
+            Span::styled(format!(" \u{1F4C4} {} Overviews ", overview_count), Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            Span::styled("[0] ", Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)),
+        ]).right_aligned()
+    } else {
+        Line::from(Span::styled(
+            " \u{1F4C4} 0 Overviews [0] ",
+            Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM),
+        )).right_aligned()
+    };
     // let tab_titles = ["Timeframe [2]", "Selection [3]", "Stats [4]"];
     let tab_titles = ["Timeframe [2]", "Selection [3]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title("Select View"))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title("Select View")
+                .title_top(overview_title),
+        )
         .style(Style::default().fg(bg_fg))
         .highlight_style(Style::default().fg(bg_yellow).bold().underlined())
         .select(selected_tab.as_index())
@@ -501,13 +519,6 @@ pub fn render_commits(
         } else {
             Span::styled(" \u{25CB} details ", Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)) // ○
         };
-        // The overview chip [0] is only active once an overview exists.
-        let overview_count = overview_state.lock_safe().items.len();
-        let overview_chip = if overview_count > 0 {
-            chip(format!("\u{1F4C4} {} overviews [0]", overview_count), Color::Cyan) // 📄
-        } else {
-            Span::styled(" \u{1F4C4} 0 overviews [0] ", Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM))
-        };
 
         let keys = match focus {
             FocusArea::Sidebar =>
@@ -524,8 +535,6 @@ pub fn render_commits(
             filter_chip,
             gap.clone(),
             detail_chip,
-            gap.clone(),
-            overview_chip,
             Span::styled("  \u{2502} ", Style::default().fg(theme.blurred_border)), // │
             Span::styled(keys, theme.footer),
         ]);
@@ -547,13 +556,63 @@ fn render_overview(
 ) {
     let state = overview_state.lock_safe();
 
-    // Top split: content area + footer (mirrors the commit view's footer row).
-    let vertical = Layout::default()
+    let spinner = {
+        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        frames[(state.spinner_frame as usize) % frames.len()]
+    };
+
+    // Vertical layout: top bar, optional generating banner, content, footer.
+    let mut constraints = vec![Constraint::Length(3)];
+    if state.generating {
+        constraints.push(Constraint::Length(3)); // banner
+    }
+    constraints.push(Constraint::Min(1)); // content
+    constraints.push(Constraint::Length(3)); // footer
+    let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .constraints(constraints)
         .split(f.area());
-    let content = vertical[0];
-    let footer_area = vertical[1];
+    let topbar_area = rows[0];
+    let (banner_area, content, footer_area) = if state.generating {
+        (Some(rows[1]), rows[2], rows[3])
+    } else {
+        (None, rows[1], rows[2])
+    };
+
+    // --- Top bar: title + count (left), back hint (right) ---
+    let title_line = Line::from(vec![
+        Span::styled(" \u{1F916} AI Overviews", Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD)), // 🤖
+        Span::styled(format!("  ({})", state.items.len()), Style::default().fg(theme.text_secondary)),
+    ]);
+    let back_line = Line::from(vec![
+        Span::styled(" Esc Back ", Style::default().fg(Color::Black).bg(theme.focus_border).add_modifier(Modifier::BOLD)),
+        Span::raw(" "),
+        Span::styled("[1] Commits ", Style::default().fg(theme.text_secondary)),
+    ]).right_aligned();
+    let topbar_block = Block::default().borders(Borders::ALL).style(Style::default().fg(theme.focus_border));
+    let topbar_inner = topbar_block.inner(topbar_area);
+    f.render_widget(topbar_block, topbar_area);
+    let topbar_inner_cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(28)])
+        .split(topbar_inner);
+    f.render_widget(Paragraph::new(title_line), topbar_inner_cols[0]);
+    f.render_widget(Paragraph::new(back_line), topbar_inner_cols[1]);
+
+    // --- Generating banner (prominent, animated) ---
+    if let Some(banner) = banner_area {
+        let project = state
+            .last_request
+            .as_ref()
+            .map(|(_, _, _, m)| m.project.clone())
+            .unwrap_or_else(|| "your commits".to_string());
+        let text = format!("\u{1F916} {}  Generating overview for {}…", spinner, project); // 🤖
+        let para = Paragraph::new(text)
+            .alignment(Alignment::Center)
+            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(theme.text_highlight)))
+            .style(Style::default().fg(Color::Black).bg(theme.text_highlight).add_modifier(Modifier::BOLD));
+        f.render_widget(para, banner);
+    }
 
     // Master/detail columns.
     let list_w = (content.width / 3).clamp(28, 44);
@@ -572,19 +631,8 @@ fn render_overview(
         Style::default().fg(theme.focus_border)
     };
 
-    // Spinner frame for the optional "generating" row.
-    let spinner = {
-        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-        frames[(state.spinner_frame as usize) % frames.len()]
-    };
-
     // --- Left: list of overviews ---
     let mut items: Vec<ListItem> = Vec::new();
-    if state.generating {
-        items.push(ListItem::new(Line::from(vec![
-            Span::styled(format!("{} generating…", spinner), Style::default().fg(theme.text_highlight).add_modifier(Modifier::BOLD)),
-        ])));
-    }
     for rec in state.items.iter() {
         let line1 = Line::from(vec![
             Span::styled(rec.project.clone(), Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
@@ -597,19 +645,18 @@ fn render_overview(
         items.push(ListItem::new(vec![line1, line2]));
     }
     if items.is_empty() {
+        let msg = if state.generating { "Generating your first overview…" } else { "No overviews yet. Press 'a' in the commit view." };
         items.push(ListItem::new(Line::from(vec![Span::styled(
-            "No overviews yet. Press 'a' in the commit view.",
+            msg,
             Style::default().fg(theme.text_secondary),
         )])));
     }
-    // List selection accounts for an optional leading spinner row.
     let mut list_state = ListState::default();
-    let sel_row = if state.generating { selected + 1 } else { selected };
     if !state.items.is_empty() {
-        list_state.select(Some(sel_row));
+        list_state.select(Some(selected));
     }
     let list = List::new(items)
-        .block(Block::default().title("Overviews [0]").borders(Borders::ALL).style(border(list_focused)))
+        .block(Block::default().title("Overviews").borders(Borders::ALL).style(border(list_focused)))
         .highlight_style(Style::default().bg(theme.selection_bg).fg(theme.selection_fg).add_modifier(Modifier::BOLD));
     f.render_stateful_widget(list, list_area, &mut list_state);
 
