@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, Padding, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear},
+    widgets::{Block, Borders, BorderType, Padding, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear},
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Line},
@@ -100,10 +100,9 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
 }
 
 /// Builds the list rows for one commit: the highlighted summary line, plus a
-/// short preview of the first body lines in detailed mode, and a trailing blank
-/// spacer line for breathing room between commits. Returned as the lines of a
-/// single multi-line `ListItem` so the selection index stays aligned (one item
-/// per commit). Full details remain available via the Space pane.
+/// short preview of the first body lines in detailed mode. Returned as the
+/// lines of a single multi-line `ListItem` so the selection index stays aligned
+/// (one item per commit). Full details remain available via the Space pane.
 fn commit_item_lines<'a>(commit: &'a str, indicator: String, filter_by_user: bool, detailed: bool, theme: &Theme) -> Vec<Line<'a>> {
     let mut lines = vec![render_commit_line(commit, indicator, filter_by_user, detailed, theme)];
     if detailed {
@@ -114,8 +113,6 @@ fn commit_item_lines<'a>(commit: &'a str, indicator: String, filter_by_user: boo
             ]));
         }
     }
-    // Spacer between commits so the list doesn't feel cramped.
-    lines.push(Line::raw(""));
     lines
 }
 
@@ -293,7 +290,7 @@ pub fn render_commits(
     // pair of tabs. The top-level view switch lives in the top bar, not here.
     let tab_titles = ["Timeframe", "Selection"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title("Mode (s)"))
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).title("Mode (s)"))
         .style(Style::default().fg(bg_fg))
         .highlight_style(Style::default().fg(bg_yellow).bold().underlined())
         .select(selected_tab.as_index())
@@ -372,7 +369,7 @@ pub fn render_commits(
             } else {
                 // No repo at selected_repo_index, show placeholder
                 let placeholder = Paragraph::new("No commits found.")
-                    .block(Block::default().title(header).borders(Borders::ALL))
+                    .block(Block::default().title(header).borders(Borders::ALL).border_type(BorderType::Rounded))
                     .alignment(Alignment::Center)
                     .style(Style::default().fg(bg_fg));
                 f.render_widget(placeholder, list_area);
@@ -383,7 +380,7 @@ pub fn render_commits(
                 let sel = selected_commits.lock_safe();
                 if sel.set.is_empty() {
                     let placeholder = Paragraph::new("No commits selected. Press 'm' to add commits to your selection.")
-                        .block(Block::default().title("Selected Commits").borders(Borders::ALL))
+                        .block(Block::default().title("Selected Commits").borders(Borders::ALL).border_type(BorderType::Rounded))
                         .alignment(Alignment::Center)
                         .style(Style::default().fg(bg_fg));
                     f.render_widget(placeholder, list_area);
@@ -408,7 +405,7 @@ pub fn render_commits(
                             if Some(c) == selected_commit_index { selected_item = Some(items.len()); }
                             let style = Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD);
                             let line = render_commit_line(commit, "*".to_string(), filter_by_user, detailed_commit_view, theme);
-                            items.push(ListItem::new(vec![line, Line::raw("")]).style(style));
+                            items.push(ListItem::new(line).style(style));
                             c += 1;
                         }
                     }
@@ -443,6 +440,7 @@ pub fn render_commits(
                 let block = Block::default()
                     .title(format!("{}  {}", icons[i], titles[i]))
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .style(Style::default().fg(colors[i]));
                 f.render_widget(block, *area);
             }
@@ -487,6 +485,7 @@ pub fn render_commits(
                 let detail_block = Block::default()
                     .title("Details")
                     .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded)
                     .padding(Padding::horizontal(1))
                     .style(Style::default().fg(bg_magenta));
                 let inner = detail_block.inner(detail_chunk);
@@ -519,7 +518,7 @@ pub fn render_commits(
     // footer — universal navigation keys first (always the same), then the
     // actions relevant to the focused pane. Timeframe/filter state lives in the
     // top bar now, so the footer is purely about what you can press here.
-    let footer_block = Block::default().borders(Borders::ALL);
+    let footer_block = Block::default().borders(Borders::ALL).border_type(BorderType::Rounded);
     {
         let universal = "Tab focus \u{00B7} 1/2 views \u{00B7} ? help \u{00B7} q quit";
         let keys = match focus {
@@ -594,7 +593,7 @@ fn render_overview(
         let text = format!("\u{1F916} {}  Generating overview for {}…", spinner, project); // 🤖
         let para = Paragraph::new(text)
             .alignment(Alignment::Center)
-            .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(theme.text_highlight)))
+            .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(Style::default().fg(theme.text_highlight)))
             .style(Style::default().fg(Color::Black).bg(theme.text_highlight).add_modifier(Modifier::BOLD));
         f.render_widget(para, banner);
     }
@@ -641,12 +640,12 @@ fn render_overview(
         list_state.select(Some(selected));
     }
     let list = List::new(items)
-        .block(Block::default().title("Overviews").borders(Borders::ALL).padding(Padding::horizontal(1)).style(border(list_focused)))
+        .block(Block::default().title("Overviews").borders(Borders::ALL).border_type(BorderType::Rounded).padding(Padding::horizontal(1)).style(border(list_focused)))
         .highlight_style(Style::default().bg(theme.selection_bg).fg(theme.selection_fg).add_modifier(Modifier::BOLD));
     f.render_stateful_widget(list, list_area, &mut list_state);
 
     // --- Right: detail pane ---
-    let detail_block = Block::default().title("Detail").borders(Borders::ALL).padding(Padding::horizontal(1)).style(border(detail_focused));
+    let detail_block = Block::default().title("Detail").borders(Borders::ALL).border_type(BorderType::Rounded).padding(Padding::horizontal(1)).style(border(detail_focused));
     let inner = detail_block.inner(detail_area);
     f.render_widget(detail_block, detail_area);
 
@@ -721,7 +720,7 @@ fn render_overview(
         theme.footer
     };
     let footer = Paragraph::new(footer_text)
-        .block(Block::default().borders(Borders::ALL))
+        .block(Block::default().borders(Borders::ALL).border_type(BorderType::Rounded))
         .style(footer_style);
     f.render_widget(footer, footer_area);
 }
@@ -832,6 +831,7 @@ fn focus_block(title: &str, focused: bool, theme: &Theme) -> Block<'static> {
     };
     Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .padding(Padding::horizontal(1))
         .title(format!("{marker}{title}"))
         .border_style(border_style)
@@ -909,6 +909,7 @@ fn render_help_overlay(f: &mut Frame, theme: &Theme, for_overview: bool) {
 
     let block = Block::default()
         .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
         .title(" Keys — press any key to close ")
         .border_style(Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD))
         .style(Style::default().bg(theme.root_bg));
