@@ -89,6 +89,9 @@ pub struct OverviewState {
     pub spinner_frame: u8,
     /// True once the selected overview was copied to the clipboard.
     pub copied: bool,
+    /// True while awaiting inline y/n confirmation for deleting the selected
+    /// overview.
+    pub pending_delete: bool,
     /// Transient text shown at the top while generating or on error (errors are
     /// not persisted to `items`).
     pub transient: Option<String>,

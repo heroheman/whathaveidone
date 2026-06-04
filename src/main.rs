@@ -207,6 +207,7 @@ fn main() -> anyhow::Result<()> {
         generating: false,
         spinner_frame: 0,
         copied: false,
+        pending_delete: false,
         transient: None,
         last_request: None,
     }));
@@ -217,6 +218,7 @@ fn main() -> anyhow::Result<()> {
     let mut overview_selected: usize = 0;
     let mut overview_focus = OverviewFocus::List;
     let mut overview_detail_scroll: u16 = 0;
+    let mut show_help = false;
 
     let rt = Runtime::new()?;
     terminal::enable_raw_mode()?;
@@ -262,6 +264,7 @@ fn main() -> anyhow::Result<()> {
                 overview_selected,
                 overview_focus,
                 overview_detail_scroll,
+                show_help,
             );
         })?;
             needs_redraw = false;
@@ -301,6 +304,7 @@ fn main() -> anyhow::Result<()> {
                         &mut overview_selected,
                         &mut overview_focus,
                         &mut overview_detail_scroll,
+                        &mut show_help,
                     )?;
                     if !handled {
                         break;

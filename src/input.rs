@@ -45,23 +45,32 @@ pub fn handle_key(
     overview_selected: &mut usize,
     overview_focus: &mut OverviewFocus,
     overview_detail_scroll: &mut u16,
+    show_help: &mut bool,
 ) -> Result<bool> {
     let lang = if lang.is_empty() { "english" } else { lang };
 
-    // The overview view owns the keyboard while active. Navigation/management
-    // keys are handled here and return early; only `a`/`A` (generate a fresh
-    // overview, which needs the commit state below) falls through.
-    if *app_view == crate::AppView::Overview && !matches!(key, KeyCode::Char('a') | KeyCode::Char('A')) {
-        return handle_overview_key(
-            key, overview_state, rt, app_view, selected_tab, focus,
-            overview_selected, overview_focus, overview_detail_scroll,
-        );
+    // The help overlay swallows input: any key closes it (q still quits).
+    if *show_help {
+        match key {
+            KeyCode::Char('q') => return Ok(false),
+            _ => *show_help = false,
+        }
+        return Ok(true);
     }
 
+    // Global keys, identical in every view: help, quit, and the two top-level
+    // view switches. Handled before view-specific routing so they always work.
     match key {
-        KeyCode::Char('0') => {
+        KeyCode::Char('?') => { *show_help = true; return Ok(true); }
+        KeyCode::Char('q') => return Ok(false),
+        KeyCode::Char('1') => {
+            *app_view = crate::AppView::Commits;
+            *focus = FocusArea::Sidebar;
+            return Ok(true);
+        }
+        KeyCode::Char('2') | KeyCode::Char('0') => {
             // Open the overview view if one exists (or is being generated);
-            // otherwise the area stays disabled and nothing happens.
+            // otherwise it stays disabled and nothing happens.
             let available = {
                 let s = overview_state.lock_safe();
                 !s.items.is_empty() || s.generating
@@ -72,25 +81,21 @@ pub fn handle_key(
                 *overview_focus = OverviewFocus::List;
                 *overview_detail_scroll = 0;
             }
-        },
-        KeyCode::Char('1') => {
-            *app_view = crate::AppView::Commits;
-            *focus = FocusArea::Sidebar;
-            if *selected_tab != crate::CommitTab::Timeframe { *selected_commit_index = None; }
-            *selected_tab = crate::CommitTab::Timeframe;
-        },
-        KeyCode::Char('2') => {
-            *app_view = crate::AppView::Commits;
-            *focus = FocusArea::CommitList;
-            if *selected_tab != crate::CommitTab::Timeframe { *selected_commit_index = None; }
-            *selected_tab = crate::CommitTab::Timeframe;
-        },
-        KeyCode::Char('3') => {
-            *app_view = crate::AppView::Commits;
-            *focus = FocusArea::CommitList;
-            if *selected_tab != crate::CommitTab::Selection { *selected_commit_index = None; }
-            *selected_tab = crate::CommitTab::Selection;
-        },
+            return Ok(true);
+        }
+        _ => {}
+    }
+
+    // The overview view owns the rest of the keyboard while active; only `a`/`A`
+    // (generate a fresh overview, which needs the commit state below) falls
+    // through to the commit handler.
+    if *app_view == crate::AppView::Overview && !matches!(key, KeyCode::Char('a') | KeyCode::Char('A')) {
+        return handle_overview_key(
+            key, overview_state, rt, app_view, overview_selected, overview_focus, overview_detail_scroll,
+        );
+    }
+
+    match key {
         KeyCode::Char('w') => {
             *current_index = 3;
             *current_interval = intervals[*current_index].1;
@@ -159,47 +164,45 @@ pub fn handle_key(
             }
         },
         KeyCode::Char('s') => {
-            // Jump to the Selection view (the single place marked commits live).
+            // Toggle the commit-list mode between Timeframe and Selection.
             *focus = FocusArea::CommitList;
-            if *selected_tab != crate::CommitTab::Selection { *selected_commit_index = None; }
-            *selected_tab = crate::CommitTab::Selection;
+            *selected_tab = match *selected_tab {
+                crate::CommitTab::Selection => crate::CommitTab::Timeframe,
+                _ => crate::CommitTab::Selection,
+            };
+            *selected_commit_index = None;
         },
         KeyCode::Tab => {
-            // Tab cycles forward through timeframes
-            if *current_index < intervals.len() - 1 {
-                *current_index += 1;
-            } else {
-                *current_index = 0;
-            }
-            *current_interval = intervals[*current_index].1;
-            *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date.clone(), to_date.clone())?;
-            *selected_commit_index = None;
-            // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
-            if *selected_repo_index != usize::MAX {
-                // If the selected repo is not present in the new commit list, reset to ALL
-                if *selected_repo_index >= commits.len() {
-                    *selected_repo_index = usize::MAX;
-                    *selected_commit_index = None;
-                }
-            }
+            // Tab cycles focus forward through the panes.
+            *focus = match *focus {
+                FocusArea::Sidebar => FocusArea::CommitList,
+                FocusArea::CommitList => if *show_details { FocusArea::Detail } else { FocusArea::Sidebar },
+                FocusArea::Detail => FocusArea::Sidebar,
+            };
         },
         KeyCode::BackTab => {
-            // Shift+Tab cycles backward through timeframes
-            if *current_index > 0 {
-                *current_index -= 1;
+            // Shift+Tab cycles focus backward through the panes.
+            *focus = match *focus {
+                FocusArea::Sidebar => if *show_details { FocusArea::Detail } else { FocusArea::CommitList },
+                FocusArea::CommitList => FocusArea::Sidebar,
+                FocusArea::Detail => FocusArea::CommitList,
+            };
+        },
+        KeyCode::Char('[') | KeyCode::Char(']') => {
+            // Cycle the timeframe backward ('[') / forward (']').
+            let forward = matches!(key, KeyCode::Char(']'));
+            if forward {
+                *current_index = (*current_index + 1) % intervals.len();
             } else {
-                *current_index = intervals.len() - 1;
+                *current_index = (*current_index + intervals.len() - 1) % intervals.len();
             }
             *current_interval = intervals[*current_index].1;
             *commits = reload_commits(repos, *current_interval, *filter_by_user, *detailed_commit_view, from_date, to_date)?;
             *selected_commit_index = None;
-            // After reloading commits (timeframe/filter change), ensure selected_repo_index is valid
-            if *selected_repo_index != usize::MAX {
-                // If the selected repo is not present in the new commit list, reset to ALL
-                if *selected_repo_index >= commits.len() {
-                    *selected_repo_index = usize::MAX;
-                    *selected_commit_index = None;
-                }
+            // Ensure selected_repo_index is still valid after the reload.
+            if *selected_repo_index != usize::MAX && *selected_repo_index >= commits.len() {
+                *selected_repo_index = usize::MAX;
+                *selected_commit_index = None;
             }
         },
         KeyCode::Char(' ') => {
@@ -320,7 +323,6 @@ pub fn handle_key(
                 }
             }
         }
-        KeyCode::Char('q') => return Ok(false),
         KeyCode::Char('a') | KeyCode::Char('A') => {
             // Load the custom prompt template once (if configured) and reuse it below.
             let loaded_template = prompt_path.map(|path| (path, std::fs::read_to_string(path)));
@@ -459,11 +461,15 @@ pub fn handle_key(
             spawn_summary(rt, overview_state, prompt, lang.to_string(), llm.clone(), meta);
         }
         KeyCode::Esc => {
-            // In the commit browser, Esc cancels any in-flight generation:
-            // clearing `generating` makes the spinner loop break on its next
-            // tick, dropping the pending fetch future (and the HTTP request).
-            let mut s = overview_state.lock_safe();
-            s.generating = false;
+            // Esc closes the detail pane if open; otherwise it cancels any
+            // in-flight generation (clearing `generating` makes the spinner loop
+            // break on its next tick, dropping the pending fetch future).
+            if *show_details {
+                *show_details = false;
+                if *focus == FocusArea::Detail { *focus = FocusArea::CommitList; }
+            } else {
+                overview_state.lock_safe().generating = false;
+            }
         }
         KeyCode::Char('d') => {
             *detailed_commit_view = !*detailed_commit_view;
@@ -578,42 +584,62 @@ fn looks_like_error(text: &str) -> bool {
 
 /// Handles all keyboard input while the overview view is active. Returns
 /// `Ok(false)` to quit the app, `Ok(true)` otherwise.
-#[allow(clippy::too_many_arguments)]
 fn handle_overview_key(
     key: KeyCode,
     overview_state: &Arc<Mutex<OverviewState>>,
     rt: &Runtime,
     app_view: &mut crate::AppView,
-    selected_tab: &mut crate::CommitTab,
-    focus: &mut FocusArea,
     overview_selected: &mut usize,
     overview_focus: &mut OverviewFocus,
     overview_detail_scroll: &mut u16,
 ) -> Result<bool> {
     let len = overview_state.lock_safe().items.len();
+
+    // While a delete is pending, only y/n (or Esc) are live — everything else
+    // is ignored so a stray key can't act on the wrong overview.
+    if overview_state.lock_safe().pending_delete {
+        match key {
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                let items = {
+                    let mut s = overview_state.lock_safe();
+                    s.pending_delete = false;
+                    if *overview_selected < s.items.len() {
+                        s.items.remove(*overview_selected);
+                        s.copied = false;
+                    }
+                    if *overview_selected >= s.items.len() {
+                        *overview_selected = s.items.len().saturating_sub(1);
+                    }
+                    s.items.clone()
+                };
+                let _ = history::save_overviews(&items);
+                *overview_detail_scroll = 0;
+                // Nothing left → the view becomes disabled again, go back.
+                if items.is_empty() {
+                    *app_view = crate::AppView::Commits;
+                }
+            }
+            _ => {
+                overview_state.lock_safe().pending_delete = false;
+            }
+        }
+        return Ok(true);
+    }
+
     match key {
-        KeyCode::Char('q') => return Ok(false),
-        // Leave the overview view back to the commit browser.
+        // Leave the overview view back to the commit browser; if a summary is
+        // still generating, cancel it instead.
         KeyCode::Esc => {
-            *app_view = crate::AppView::Commits;
-        }
-        KeyCode::Char('1') => {
-            *app_view = crate::AppView::Commits;
-            *focus = FocusArea::Sidebar;
-            *selected_tab = crate::CommitTab::Timeframe;
-        }
-        KeyCode::Char('2') => {
-            *app_view = crate::AppView::Commits;
-            *focus = FocusArea::CommitList;
-            *selected_tab = crate::CommitTab::Timeframe;
-        }
-        KeyCode::Char('3') => {
-            *app_view = crate::AppView::Commits;
-            *focus = FocusArea::CommitList;
-            *selected_tab = crate::CommitTab::Selection;
+            let mut s = overview_state.lock_safe();
+            if s.generating {
+                s.generating = false;
+            } else {
+                drop(s);
+                *app_view = crate::AppView::Commits;
+            }
         }
         // Toggle focus between the list and the detail pane.
-        KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => {
+        KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab | KeyCode::BackTab => {
             *overview_focus = match *overview_focus {
                 OverviewFocus::List => OverviewFocus::Detail,
                 OverviewFocus::Detail => OverviewFocus::List,
@@ -650,23 +676,12 @@ fn handle_overview_key(
                 }
             }
         }
-        // Delete the selected overview and persist the change.
-        KeyCode::Char('d') => {
-            let items = {
-                let mut s = overview_state.lock_safe();
-                if *overview_selected < s.items.len() {
-                    s.items.remove(*overview_selected);
-                    s.copied = false;
-                }
-                if *overview_selected >= s.items.len() {
-                    *overview_selected = s.items.len().saturating_sub(1);
-                }
-                s.items.clone()
-            };
-            let _ = history::save_overviews(&items);
-            // If nothing is left, the area becomes disabled again — go back.
-            if items.is_empty() {
-                *app_view = crate::AppView::Commits;
+        // Arm an inline delete confirmation (resolved by y/n in the guard above).
+        KeyCode::Char('x') | KeyCode::Delete => {
+            let mut s = overview_state.lock_safe();
+            if !s.items.is_empty() {
+                s.pending_delete = true;
+                s.copied = false;
             }
         }
         // Regenerate from the last dispatched request.

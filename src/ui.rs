@@ -142,6 +142,7 @@ pub fn render_commits(
     overview_selected: usize,
     overview_focus: OverviewFocus,
     overview_detail_scroll: u16,
+    show_help: bool,
 ) {
     let display_interval = if let (Some(from), to) = (from_date, to_date) {
         let to_str = to.as_deref().unwrap_or("today");
@@ -155,6 +156,7 @@ pub fn render_commits(
     // The overview view fully owns the screen when active.
     if show_overview {
         render_overview(f, theme, overview_state, overview_selected, overview_focus, overview_detail_scroll, &display_interval, filter_by_user);
+        if show_help { render_help_overlay(f, theme, true); }
         return;
     }
 
@@ -528,6 +530,8 @@ pub fn render_commits(
         let footer = Paragraph::new(line).block(footer_block);
         f.render_widget(footer, layout.footer);
     }
+
+    if show_help { render_help_overlay(f, theme, false); }
 }
 
 /// Renders the overview view: a left list of stored AI overviews (newest
@@ -694,12 +698,16 @@ fn render_overview(
     }
 
     // --- Footer ---
-    let footer_text = if state.copied {
+    let footer_text = if state.pending_delete {
+        "Delete this overview?  y = yes  \u{00B7}  n / Esc = cancel".to_string()
+    } else if state.copied {
         "\u{2713} Copied to clipboard".to_string()
     } else {
-        "\u{2191}/\u{2193} select \u{00B7} \u{2190}/\u{2192} focus list/detail \u{00B7} c copy \u{00B7} d delete \u{00B7} r regenerate \u{00B7} 1 commits \u{00B7} Esc back \u{00B7} q quit".to_string()
+        "\u{2191}/\u{2193} select \u{00B7} \u{2190}/\u{2192} focus \u{00B7} c copy \u{00B7} r regenerate \u{00B7} x delete \u{00B7} Esc back \u{00B7} ? help".to_string()
     };
-    let footer_style = if state.copied {
+    let footer_style = if state.pending_delete {
+        Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD)
+    } else if state.copied {
         Style::default().fg(theme.commit_author.fg.unwrap_or(Color::Green)).add_modifier(Modifier::BOLD)
     } else {
         theme.footer
@@ -818,4 +826,64 @@ fn focus_block(title: &str, focused: bool, theme: &Theme) -> Block<'static> {
         .borders(Borders::ALL)
         .title(format!("{marker}{title}"))
         .border_style(border_style)
+}
+
+/// Centers a rectangle of the given size within `area` (clamped to it).
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let w = width.min(area.width);
+    let h = height.min(area.height);
+    Rect {
+        x: area.x + (area.width.saturating_sub(w)) / 2,
+        y: area.y + (area.height.saturating_sub(h)) / 2,
+        width: w,
+        height: h,
+    }
+}
+
+/// Centered help overlay listing all keybindings, grouped by scope. Dismissed
+/// by any key (handled in `input`).
+fn render_help_overlay(f: &mut Frame, theme: &Theme, for_overview: bool) {
+    let area = centered_rect(64, 22, f.area());
+    f.render_widget(Clear, area);
+
+    let head = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(theme.text_highlight).add_modifier(Modifier::BOLD)));
+    let row = |k: &str, d: &str| Line::from(vec![
+        Span::styled(format!("  {:<14}", k), Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD)),
+        Span::styled(d.to_string(), Style::default().fg(theme.text)),
+    ]);
+
+    let mut lines = vec![
+        head("Global"),
+        row("1 / 2", "switch view: Commits / Overviews"),
+        row("Tab / ⇧Tab", "move focus between panes"),
+        row("← → / h l", "move focus left / right"),
+        row("↑ ↓ / j k", "navigate / scroll in the focused pane"),
+        row("?", "toggle this help"),
+        row("q", "quit"),
+        Line::raw(""),
+    ];
+    if for_overview {
+        lines.push(head("Overviews"));
+        lines.push(row("Enter / c", "copy the selected overview"));
+        lines.push(row("r", "regenerate the last overview"));
+        lines.push(row("x / Del", "delete (asks y/n to confirm)"));
+        lines.push(row("a", "generate a new overview"));
+        lines.push(row("Esc", "back to Commits (cancels generation)"));
+    } else {
+        lines.push(head("Commits"));
+        lines.push(row("Space", "open/close the detail pane"));
+        lines.push(row("s", "toggle list mode: Timeframe / Selection"));
+        lines.push(row("m", "mark commit (or whole repo from sidebar)"));
+        lines.push(row("[ / ]", "previous / next timeframe"));
+        lines.push(row("u", "toggle mine / all authors"));
+        lines.push(row("d", "toggle detailed commit lines"));
+        lines.push(row("a", "generate an AI overview"));
+    }
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title(" Keys — press any key to close ")
+        .border_style(Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD))
+        .style(Style::default().bg(theme.root_bg));
+    f.render_widget(Paragraph::new(lines).block(block), area);
 }
