@@ -10,10 +10,8 @@ pub fn get_active_commits(commits: &CommitData, selected_repo_index: usize) -> O
     if selected_repo_index == usize::MAX {
         None
     } else {
-        commits
-            .iter()
-            .find(|(repo, _)| repo == &commits[selected_repo_index].0)
-            .map(|(_, repo_commits)| repo_commits)
+        // Bounds-checked lookup; usize::MAX means "All projects" (handled above).
+        commits.get(selected_repo_index).map(|(_, repo_commits)| repo_commits)
     }
 }
 
