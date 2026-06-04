@@ -154,7 +154,7 @@ pub fn render_commits(
 
     // The overview view fully owns the screen when active.
     if show_overview {
-        render_overview(f, theme, overview_state, overview_selected, overview_focus, overview_detail_scroll);
+        render_overview(f, theme, overview_state, overview_selected, overview_focus, overview_detail_scroll, &display_interval, filter_by_user);
         return;
     }
 
@@ -163,7 +163,6 @@ pub fn render_commits(
         .map(|arc| arc.lock_safe().set.keys().cloned().collect())
         .unwrap_or_default();
     let bg_fg = theme.text;
-    let bg_cyan = theme.focus_border;
     let bg_magenta = Color::Magenta; // Not in theme yet
     let bg_yellow = theme.text_highlight;
 
@@ -172,6 +171,10 @@ pub fn render_commits(
     let sidebar_area = layout.sidebar;
     let commit_area = layout.commit;
     let detail_area = layout.detail;
+
+    // Persistent top bar: view switcher + global chips.
+    let overview_count = overview_state.lock_safe().items.len();
+    render_top_bar(f, theme, layout.topbar, TopView::Commits, overview_count, &display_interval, filter_by_user);
 
     // Split sidebar area into sidebar and button box
     let sidebar_chunks = Layout::default()
@@ -272,8 +275,7 @@ pub fn render_commits(
     // "All" is item 0, the divider item 1, so repo i is item i + 2. Selecting
     // the right item also lets the List auto-scroll to keep it visible.
     sidebar_state.select(Some(if selected_repo_index == usize::MAX { 0 } else { selected_repo_index + 2 }));
-    let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
-        .style(Style::default().fg(bg_cyan));
+    let sidebar_block = focus_block("Repositories", focus == FocusArea::Sidebar, theme);
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
 
     // Commit list layout with scrollbar
@@ -282,37 +284,17 @@ pub fn render_commits(
         .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
         .split(commit_area);
 
-    // Tabs for commit list. "Overviews [0]" is a top-level view switch shown
-    // right-aligned on the same tab line, in the same plain tab style; it is
-    // dimmed until an overview exists.
-    let overview_count = overview_state.lock_safe().items.len();
-    // let tab_titles = ["Timeframe [2]", "Selection [3]", "Stats [4]"];
-    let tab_titles = ["Timeframe [2]", "Selection [3]"];
+    // Segment toggle for the commit list mode (switched with `s`), styled like a
+    // pair of tabs. The top-level view switch lives in the top bar, not here.
+    let tab_titles = ["Timeframe", "Selection"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
-        .block(Block::default().borders(Borders::ALL).title("Select View"))
+        .block(Block::default().borders(Borders::ALL).title("Mode (s)"))
         .style(Style::default().fg(bg_fg))
         .highlight_style(Style::default().fg(bg_yellow).bold().underlined())
         .select(selected_tab.as_index())
         .divider(symbols::DOT)
         .padding(" ", " ");
     f.render_widget(tabs, layout.tabs);
-    // Render the overview switch on the tab content line (inside the borders),
-    // right-aligned, matching the unselected-tab style.
-    let overview_style = if overview_count > 0 {
-        Style::default().fg(bg_fg)
-    } else {
-        Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)
-    };
-    let overview_inner = Rect {
-        x: layout.tabs.x + 1,
-        y: layout.tabs.y + 1,
-        width: layout.tabs.width.saturating_sub(3),
-        height: 1,
-    };
-    f.render_widget(
-        Paragraph::new(Line::from(Span::styled("Overviews [0]", overview_style)).right_aligned()),
-        overview_inner,
-    );
 
     let list_area = Rect {
         x: commit_area.x,
@@ -358,8 +340,7 @@ pub fn render_commits(
                     offset += commits.len();
                 }
                 let mut state = ListState::default(); state.select(selected_commit_index);
-                let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-                    .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
+                let list = List::new(items).block(focus_block(&header, focus==FocusArea::CommitList, theme));
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total: usize = data.iter().map(|(_,c)|c.len()).sum();
@@ -380,8 +361,7 @@ pub fn render_commits(
                     item
                 }).collect();
                 let mut state=ListState::default(); state.select(selected_commit_index);
-                let list = List::new(items).block(Block::default().title(header).borders(Borders::ALL)
-                    .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
+                let list = List::new(items).block(focus_block(&header, focus==FocusArea::CommitList, theme));
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total=commits.len();
@@ -427,8 +407,7 @@ pub fn render_commits(
                         }
                     }
                     let mut state = ListState::default(); state.select(selected_commit_index);
-                    let list = List::new(items).block(Block::default().title("Selected Commits").borders(Borders::ALL)
-                        .style(if focus==FocusArea::CommitList {Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_cyan)}));
+                    let list = List::new(items).block(focus_block("Selected Commits", focus==FocusArea::CommitList, theme));
                     f.render_stateful_widget(list, list_area, &mut state);
                 }
             }
@@ -527,46 +506,23 @@ pub fn render_commits(
         }
     } 
 
-    // footer — colored state chips (timeframe / filter / detail toggle) make
-    // the active modes obvious at a glance, followed by the keys relevant to
-    // the focused area. Stays on one line; chips sit first so they survive a
-    // truncation on narrow terminals.
+    // footer — universal navigation keys first (always the same), then the
+    // actions relevant to the focused pane. Timeframe/filter state lives in the
+    // top bar now, so the footer is purely about what you can press here.
     let footer_block = Block::default().borders(Borders::ALL);
     {
-        // A filled background reads as "on" / active; dim text reads as "off".
-        let chip = |label: String, bg: Color| {
-            Span::styled(format!(" {label} "), Style::default().fg(Color::Black).bg(bg).add_modifier(Modifier::BOLD))
-        };
-        let gap = Span::raw(" ");
-
-        let tf_chip = chip(format!("\u{23F1} {display_interval}"), theme.focus_border); // ⏱
-        let filter_chip = if filter_by_user {
-            chip("\u{25C9} mine".into(), Color::Green) // ◉
-        } else {
-            chip("\u{25C9} all".into(), Color::Magenta)
-        };
-        let detail_chip = if detailed_commit_view {
-            chip("\u{25C9} details".into(), theme.text_highlight) // ◉
-        } else {
-            Span::styled(" \u{25CB} details ", Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)) // ○
-        };
-
+        let universal = "Tab focus \u{00B7} 1/2 views \u{00B7} ? help \u{00B7} q quit";
         let keys = match focus {
             FocusArea::Sidebar =>
-                "\u{2191}/\u{2193} repo \u{00B7} \u{2192}/l commits \u{00B7} m mark repo \u{00B7} Tab timeframe \u{00B7} u mine/all \u{00B7} a summary \u{00B7} q quit",
+                "\u{2191}/\u{2193} repo \u{00B7} \u{2192} commits \u{00B7} m mark repo \u{00B7} [ ] timeframe \u{00B7} u mine/all \u{00B7} a summary",
             FocusArea::CommitList =>
-                "\u{2191}/\u{2193} commit \u{00B7} Space details \u{00B7} m mark \u{00B7} s selection \u{00B7} u mine/all \u{00B7} d details \u{00B7} a summary \u{00B7} q quit",
+                "\u{2191}/\u{2193} commit \u{00B7} Space detail \u{00B7} m mark \u{00B7} s mode \u{00B7} [ ] timeframe \u{00B7} u mine/all \u{00B7} d detailed \u{00B7} a summary",
             FocusArea::Detail =>
-                "\u{2191}/\u{2193} scroll \u{00B7} \u{2190}/h back \u{00B7} Space close \u{00B7} a summary \u{00B7} q quit",
+                "\u{2191}/\u{2193} scroll \u{00B7} \u{2190} back \u{00B7} Space close \u{00B7} a summary",
         };
-
         let line = Line::from(vec![
-            tf_chip,
-            gap.clone(),
-            filter_chip,
-            gap.clone(),
-            detail_chip,
-            Span::styled("  \u{2502} ", Style::default().fg(theme.blurred_border)), // │
+            Span::styled(format!(" {universal} "), Style::default().fg(theme.text_secondary).add_modifier(Modifier::BOLD)),
+            Span::styled("\u{2502} ", Style::default().fg(theme.blurred_border)), // │
             Span::styled(keys, theme.footer),
         ]);
         let footer = Paragraph::new(line).block(footer_block);
@@ -577,6 +533,7 @@ pub fn render_commits(
 /// Renders the overview view: a left list of stored AI overviews (newest
 /// first), a right detail pane with a metadata header and the scrollable text,
 /// and a context footer. Fully keyboard-driven.
+#[allow(clippy::too_many_arguments)]
 fn render_overview(
     f: &mut Frame,
     theme: &Theme,
@@ -584,6 +541,8 @@ fn render_overview(
     selected: usize,
     overview_focus: OverviewFocus,
     detail_scroll: u16,
+    interval_label: &str,
+    filter_by_user: bool,
 ) {
     let state = overview_state.lock_safe();
 
@@ -592,8 +551,8 @@ fn render_overview(
         frames[(state.spinner_frame as usize) % frames.len()]
     };
 
-    // Vertical layout: top bar, optional generating banner, content, footer.
-    let mut constraints = vec![Constraint::Length(3)];
+    // Vertical layout: shared top bar (1 line), optional banner, content, footer.
+    let mut constraints = vec![Constraint::Length(1)];
     if state.generating {
         constraints.push(Constraint::Length(3)); // banner
     }
@@ -610,25 +569,8 @@ fn render_overview(
         (None, rows[1], rows[2])
     };
 
-    // --- Top bar: title + count (left), back hint (right) ---
-    let title_line = Line::from(vec![
-        Span::styled(" \u{1F916} AI Overviews", Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD)), // 🤖
-        Span::styled(format!("  ({})", state.items.len()), Style::default().fg(theme.text_secondary)),
-    ]);
-    let back_line = Line::from(vec![
-        Span::styled(" Esc Back ", Style::default().fg(Color::Black).bg(theme.focus_border).add_modifier(Modifier::BOLD)),
-        Span::raw(" "),
-        Span::styled("[1] Commits ", Style::default().fg(theme.text_secondary)),
-    ]).right_aligned();
-    let topbar_block = Block::default().borders(Borders::ALL).style(Style::default().fg(theme.focus_border));
-    let topbar_inner = topbar_block.inner(topbar_area);
-    f.render_widget(topbar_block, topbar_area);
-    let topbar_inner_cols = Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([Constraint::Min(1), Constraint::Length(28)])
-        .split(topbar_inner);
-    f.render_widget(Paragraph::new(title_line), topbar_inner_cols[0]);
-    f.render_widget(Paragraph::new(back_line), topbar_inner_cols[1]);
+    // Shared top bar (Overviews active here).
+    render_top_bar(f, theme, topbar_area, TopView::Overviews, state.items.len(), interval_label, filter_by_user);
 
     // --- Generating banner (prominent, animated) ---
     if let Some(banner) = banner_area {
@@ -771,6 +713,7 @@ fn render_overview(
 /// Screen regions for the main view, computed once so rendering and mouse
 /// hit-testing agree on the exact same rectangles.
 pub struct AppLayout {
+    pub topbar: Rect,
     pub sidebar: Rect,
     pub commit: Rect,
     pub detail: Option<Rect>,
@@ -778,13 +721,16 @@ pub struct AppLayout {
     pub footer: Rect,
 }
 
-/// Computes the main layout. The detail column only appears when the detail
-/// pane is toggled on and a commit is selected.
+/// Computes the main layout: a 1-line top bar (view switcher + global chips),
+/// the content row, and a 3-line footer. The detail column only appears when
+/// the detail pane is toggled on and a commit is selected.
 pub fn compute_layout(area: Rect, show_details: bool, has_selection: bool) -> AppLayout {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .constraints([Constraint::Length(1), Constraint::Min(1), Constraint::Length(3)])
         .split(area);
+    let topbar = vertical[0];
+    let content = vertical[1];
     // Responsive sidebar: ~1/4 of the width, clamped so it stays readable on
     // narrow terminals and doesn't waste space on wide ones.
     let sidebar_w = (area.width / 4).clamp(22, 36);
@@ -792,16 +738,84 @@ pub fn compute_layout(area: Rect, show_details: bool, has_selection: bool) -> Ap
         Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(sidebar_w), Constraint::Percentage(60), Constraint::Percentage(40)])
-            .split(vertical[0])
+            .split(content)
     } else {
         Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Length(sidebar_w), Constraint::Min(1)])
-            .split(vertical[0])
+            .split(content)
     };
     let sidebar = columns[0];
     let commit = columns[1];
     let detail = if columns.len() > 2 { Some(columns[2]) } else { None };
     let tabs = Rect { x: commit.x, y: commit.y, width: commit.width, height: 3 };
-    AppLayout { sidebar, commit, detail, tabs, footer: vertical[1] }
+    AppLayout { topbar, sidebar, commit, detail, tabs, footer: vertical[2] }
+}
+
+/// The two top-level views, for the top bar's switcher.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum TopView {
+    Commits,
+    Overviews,
+}
+
+/// Renders the persistent top bar: the view switcher on the left and global
+/// status chips on the right. Shown identically in both views so the user
+/// always knows where they are and how to switch.
+fn render_top_bar(
+    f: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    active: TopView,
+    overview_count: usize,
+    interval_label: &str,
+    filter_by_user: bool,
+) {
+    // A view entry: filled when active, dimmed when disabled, plain otherwise.
+    let view_chip = |label: &str, key: &str, is_active: bool, disabled: bool| {
+        let text = format!(" {label} {key} ");
+        let style = if disabled {
+            Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)
+        } else if is_active {
+            Style::default().fg(Color::Black).bg(theme.focus_border).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD)
+        };
+        Span::styled(text, style)
+    };
+    let left = Line::from(vec![
+        view_chip("\u{25A3} Commits", "1", active == TopView::Commits, false), // ▣
+        Span::raw(" "),
+        view_chip("\u{25A2} Overviews", "2", active == TopView::Overviews, overview_count == 0), // ▢
+    ]);
+
+    let filter = if filter_by_user { "\u{25C9} mine" } else { "\u{25C9} all" }; // ◉
+    let right = Line::from(vec![
+        Span::styled(format!("\u{23F1} {} ", interval_label), Style::default().fg(theme.text_highlight)), // ⏱
+        Span::styled("\u{00B7} ", Style::default().fg(theme.blurred_border)),
+        Span::styled(format!("{} ", filter), Style::default().fg(theme.text_secondary)),
+        Span::styled("\u{00B7} ", Style::default().fg(theme.blurred_border)),
+        Span::styled("? help ", Style::default().fg(theme.text_secondary)),
+    ]).right_aligned();
+
+    let cols = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Min(1), Constraint::Length(28)])
+        .split(area);
+    f.render_widget(Paragraph::new(left), cols[0]);
+    f.render_widget(Paragraph::new(right), cols[1]);
+}
+
+/// A bordered block whose border + title reflect focus: the focused pane gets a
+/// bright bold border and a `▸` marker so the active area is unmistakable.
+fn focus_block(title: &str, focused: bool, theme: &Theme) -> Block<'static> {
+    let (marker, border_style) = if focused {
+        ("\u{25B8} ", Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD)) // ▸
+    } else {
+        ("  ", Style::default().fg(theme.blurred_border))
+    };
+    Block::default()
+        .borders(Borders::ALL)
+        .title(format!("{marker}{title}"))
+        .border_style(border_style)
 }
