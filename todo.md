@@ -35,11 +35,11 @@ Sortiert nach Priorität. Verbesserungsvorschläge (Architektur) sind ans Ende v
 
 ## Verbesserungsvorschläge (Architektur) — VORERST AUSGESETZT
 
-Offene `clippy::too_many_arguments`-Warnungen (handle_key 24/7, render_commits 19/7, handle_mouse 8/7) lösen sich mit V1 auf.
+Erledigt: V5, V3, V2. V6 wurde durch Phase C abgedeckt. Offen (bewusst vertagt): V1, V4.
 
-- V1 — Zentrales `App`-Struct statt ~24 `&mut`-Parameter durch main.rs → input.rs (Wurzel von B2/B6/B7).
-- V2 — Layout einmal berechnen und an Render + Input geben (statt mehrfach duplizieren); ermöglicht persistenten Scroll-Offset → exaktes Klick-Mapping auf gescrollten Listen.
-- V3 — Beide Async-Pfade (Maus/Tastatur AI-Summary) auf eine gemeinsame Funktion vereinheitlichen.
-- V4 — `CommitData` strukturieren: `struct Commit { hash, datetime, author, subject, body }` statt roher `Vec<String>` + verstreutes `split('|')`.
-- V5 — Konstante Redraw-Schleife (~33fps im Leerlauf) event-/loading-gesteuert machen.
-- V6 — Weitere Fehlerbehandlung statt verbleibender Panics/`unwrap` an Rändern.
+- [ ] V1 — Zentrales `App`-Struct statt ~24 `&mut`-Parameter durch main.rs → input.rs (Wurzel von B2/B6/B7). **OFFEN.** Großer mechanischer Refactor; löst die verbleibenden `clippy::too_many_arguments` (handle_key 24/7, render_commits 19/7, handle_mouse 8/7). Empfehlung: auf Branch + manuelle TUI-Tests.
+- [x] V2 — Layout einmal berechnen (`ui::compute_layout`), von render_commits + beiden main.rs-Hit-Tests genutzt.
+- [x] V3 — Async vereinheitlicht: Maus-Pfad entfernt, eine `spawn_summary`-Dispatch-Stelle.
+- [ ] V4 — `CommitData` strukturieren: `struct Commit { hash, datetime, author, subject, body, raw }` statt roher `Vec<String>` + verstreutes `split('|')`. **OFFEN.** Verhaltenserhaltend via `raw` möglich, aber breit streuend (git/ui/input/models). Empfehlung: auf Branch + manuelle TUI-Tests.
+- [x] V5 — Redraw event-/loading-gesteuert statt konstant ~33fps.
+- [x] V6 — Gefährliche Panics/`unwrap` an Rändern beseitigt (Phase C); verbleibende zwei `expect` (eingebettetes Blueprint-Asset, `home_dir`) sind vertretbar.
