@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
         gemini_model = model;
     }
 
-    let repos = find_git_repos(".")?;
+    let repos = find_git_repos(std::path::Path::new("."))?;
 
     let intervals = vec![
         ("24h", Duration::from_secs(24 * 3600)),

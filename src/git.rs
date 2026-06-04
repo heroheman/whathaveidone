@@ -1,28 +1,39 @@
-use std::{fs, path::PathBuf, process::Command, time::{Duration, SystemTime}};
+use std::{fs, path::{Path, PathBuf}, process::Command, time::{Duration, SystemTime}};
 use chrono::{DateTime, Local};
 use anyhow::Result;
 use std::sync::OnceLock;
 
-pub fn find_git_repos(start_dir: &str) -> Result<Vec<PathBuf>> {
+pub fn find_git_repos(start_dir: &Path) -> Result<Vec<PathBuf>> {
     let mut repos = vec![];
-    let start_path = PathBuf::from(start_dir);
-    if start_path.join(".git").exists() {
-        repos.push(start_path.clone());
+    if start_dir.join(".git").exists() {
+        repos.push(start_dir.to_path_buf());
         // Do not recurse into subdirs if the start_dir is a git repo itself (common convention)
         return Ok(repos);
     }
-    for entry in fs::read_dir(start_dir)? {
-        let entry = entry?;
+    // Skipping an unreadable directory should not abort the whole scan.
+    let entries = match fs::read_dir(start_dir) {
+        Ok(entries) => entries,
+        Err(_) => return Ok(repos),
+    };
+    for entry in entries.flatten() {
         let path = entry.path();
-        if path.is_dir() {
+        // Use the entry's file type to skip symlinks (avoids traversal cycles)
+        // and ignore hidden directories such as caches and dot-folders.
+        let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
+        let is_hidden = entry
+            .file_name()
+            .to_str()
+            .map(|n| n.starts_with('.'))
+            .unwrap_or(false);
+        if is_dir && !is_hidden {
             if path.join(".git").exists() {
                 repos.push(path);
-            } else {
-                let mut sub = find_git_repos(path.to_str().unwrap())?;
+            } else if let Ok(mut sub) = find_git_repos(&path) {
                 repos.append(&mut sub);
             }
         }
     }
+    repos.sort();
     Ok(repos)
 }
 
