@@ -66,22 +66,24 @@ pub fn get_recent_commits(
         cmd.arg("--since").arg(&since_str);
     }
 
+    cmd.arg("--date=format:%Y-%m-%d %H:%M");
+
+    // Apply the "only mine" author filter in every view, detailed included.
+    if filter_by_user {
+        static USER_EMAIL: OnceLock<Option<String>> = OnceLock::new();
+        let user = USER_EMAIL.get_or_init(|| get_current_git_user().ok());
+        if let Some(user) = user {
+            cmd.arg("--author").arg(user);
+        }
+    }
+
     if detailed {
         // Use a unique separator for robust splitting, and show date+time (hh:mm)
-        cmd.arg("--date=format:%Y-%m-%d %H:%M");
         cmd.arg("--format=%h %ad%n%B (%an)%n---GITBLOCK---");
+    } else if filter_by_user {
+        cmd.arg("--pretty=format:%h|%ad|%s");
     } else {
-        cmd.arg("--date=format:%Y-%m-%d %H:%M");
-        if filter_by_user {
-            cmd.arg("--pretty=format:%h|%ad|%s");
-            static USER_EMAIL: OnceLock<Option<String>> = OnceLock::new();
-            let user = USER_EMAIL.get_or_init(|| get_current_git_user().ok());
-            if let Some(user) = user {
-                cmd.arg("--author").arg(user);
-            }
-        } else {
-            cmd.arg("--pretty=format:%h|%ad|%an|%s");
-        }
+        cmd.arg("--pretty=format:%h|%ad|%an|%s");
     }
 
     let output = cmd.output()?;

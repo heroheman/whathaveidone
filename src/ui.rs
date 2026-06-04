@@ -23,7 +23,23 @@ pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 static TICKET_REGEX: Lazy<Regex> = Lazy::new(|| Regex::new(r"[A-Z]+-\d+").unwrap());
 
 /// Renders a commit line with syntax highlighting and ticket detection.
-fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bool, theme: &Theme) -> Line<'a> {
+fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bool, detailed: bool, theme: &Theme) -> Line<'a> {
+    // Detailed view: the first line is "<hash> <YYYY-MM-DD> <HH:MM>" (space
+    // separated, no '|'), the subject/body follow on subsequent lines.
+    if detailed {
+        let first = commit.lines().next().unwrap_or(commit);
+        let mut it = first.splitn(2, ' ');
+        let mut spans = vec![Span::raw(indicator), Span::raw(" ")];
+        if let Some(hash) = it.next() {
+            spans.push(Span::styled(hash.trim().to_owned(), theme.commit_hash));
+        }
+        if let Some(datetime) = it.next() {
+            spans.push(Span::raw(" | "));
+            spans.push(Span::styled(datetime.trim().to_owned(), theme.commit_datetime));
+        }
+        return Line::from(spans);
+    }
+
     let mut spans = vec![];
     let parts: Vec<&str> = if filter_by_user {
         commit.splitn(3, '|').collect()
@@ -298,7 +314,7 @@ pub fn render_commits(
                             let mut detail_parts = commit.splitn(2, '\n');
                             let commit_line = detail_parts.next().unwrap_or("");
                             let body = detail_parts.next().unwrap_or("");
-                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, theme);
+                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, detailed_commit_view, theme);
                             let item = ListItem::new(rendered_line).style(style).bg(theme.selection_bg);
                             items.push(item);
                             for line in body.lines() {
@@ -310,7 +326,7 @@ pub fn render_commits(
                             } else {
                                 commit
                             };
-                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, theme);
+                            let rendered_line = render_commit_line(commit_line, indicator, filter_by_user, detailed_commit_view, theme);
                             let mut item = ListItem::new(rendered_line).style(style);
                             if sel {
                                 item = item.bg(theme.selection_bg);
@@ -335,7 +351,7 @@ pub fn render_commits(
                     let star = if let Some(hash) = commit.split_whitespace().next() { if selected_set.contains(hash) {"*"} else {" "} } else {" "};
                     let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
                     let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                    let rendered_line = render_commit_line(commit, indicator, filter_by_user, theme);
+                    let rendered_line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
                     let mut item = ListItem::new(rendered_line).style(style);
                     if sel {
                         item = item.bg(theme.selection_bg);
@@ -393,7 +409,7 @@ pub fn render_commits(
                             let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
                             let indicator = format!("{}  ", star);
                             let style = Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD);
-                            let line = render_commit_line(commit, indicator, filter_by_user, theme);
+                            let line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
                             items.push(ListItem::new(line).style(style));
                         }
                     }
