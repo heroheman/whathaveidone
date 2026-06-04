@@ -247,9 +247,7 @@ fn main() -> anyhow::Result<()> {
                             &mut selected_repo_index,
                             &mut selected_commit_index,
                             &mut focus,
-                            &mut commitlist_scroll,
                             &popup_quote,
-                            &selected_commits,
                             sidebar_area,
                             &mut selected_tab,
                         );

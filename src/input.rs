@@ -443,9 +443,7 @@ pub fn handle_mouse(
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
     focus: &mut FocusArea,
-    commitlist_scroll: &mut usize,
     popup_quote: &Arc<Mutex<PopupQuote>>,
-    selected_commits: &Arc<Mutex<SelectedCommits>>,
     sidebar_area: ratatui::prelude::Rect,
     selected_tab: &mut crate::CommitTab,
 ) {
@@ -492,134 +490,48 @@ pub fn handle_mouse(
             *selected_commit_index = None;
             return;
         } else {
-            // Commit list area
+            // Commit list / selection area (everything right of the sidebar).
+            // The list begins below the 3-row tab bar and inside the list block
+            // border, so the first commit row is at sidebar_area.y + 4. The
+            // sidebar and commit list share the same vertical chunk, hence the
+            // shared height. Mapping assumes the list top is visible: the List
+            // widget owns its auto-scroll offset and does not expose it, so
+            // clicks on a scrolled list are best-effort (see todo V2).
             *focus = FocusArea::CommitList;
-            // Estimate which commit was clicked
-            let commit_y = y.saturating_sub(1); // account for border
-            let mut idx = commit_y as usize + *commitlist_scroll;
-            if *selected_repo_index == usize::MAX {
-                // All: need to skip repo headers
-                let mut offset = 0;
-                for (_repo, repo_commits) in commits {
-                    if idx == 0 {
-                        // header line, do nothing
-                        return;
-                    }
-                    idx -= 1;
-                    if idx < repo_commits.len() {
-                        *selected_commit_index = Some(offset + idx);
-                        // Mark/unmark on click
-                        let mut sel = selected_commits.lock().unwrap();
-                        let commit = &repo_commits[idx];
-                        let hash = commit.split_whitespace().next().unwrap_or("").to_string();
-                        if sel.set.contains(&hash) {
-                            sel.set.remove(&hash);
-                        } else {
-                            sel.set.insert(hash);
-                        }
-                        return;
-                    }
-                    offset += repo_commits.len();
-                    idx -= repo_commits.len();
-                }
-            } else if let Some((_repo, repo_commits)) = commits.get(*selected_repo_index) {
-                if idx < repo_commits.len() {
-                    *selected_commit_index = Some(idx);
-                    // Mark/unmark on click
-                    let mut sel = selected_commits.lock().unwrap();
-                    let commit = &repo_commits[idx];
-                    let hash = commit.split_whitespace().next().unwrap_or("").to_string();
-                    if sel.set.contains(&hash) {
-                        sel.set.remove(&hash);
-                    } else {
-                        sel.set.insert(hash);
-                    }
-                }
+            let list_top = sidebar_area.y + 4;
+            let list_bottom = sidebar_area.y + sidebar_area.height;
+            if y < list_top || y >= list_bottom {
+                return;
             }
-        }
-        // Commit list and selection list mouse support
-        // Get main window size and layout
-        let area = crossterm::terminal::size().unwrap_or((120,40));
-        let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
-        let vertical_chunks = ratatui::layout::Layout::default()
-            .direction(ratatui::layout::Direction::Vertical)
-            .constraints([
-                ratatui::layout::Constraint::Min(1),
-                ratatui::layout::Constraint::Length(3)
-            ]).split(area);
-        let columns = if selected_commit_index.is_some() {
-            if selected_commit_index.unwrap() != usize::MAX && *focus == crate::models::FocusArea::Detail {
-                ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Horizontal)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(30),
-                        ratatui::layout::Constraint::Percentage(60),
-                        ratatui::layout::Constraint::Percentage(40),
-                    ])
-                    .split(vertical_chunks[0])
-            } else {
-                ratatui::layout::Layout::default()
-                    .direction(ratatui::layout::Direction::Horizontal)
-                    .constraints([
-                        ratatui::layout::Constraint::Length(30),
-                        ratatui::layout::Constraint::Min(1),
-                    ])
-                    .split(vertical_chunks[0])
-            }
-        } else {
-            ratatui::layout::Layout::default()
-                .direction(ratatui::layout::Direction::Horizontal)
-                .constraints([
-                    ratatui::layout::Constraint::Length(30),
-                    ratatui::layout::Constraint::Min(1),
-                ])
-                .split(vertical_chunks[0])
-        };
-        let commit_area = columns[1];
-        let x = mouse_event.column;
-        let y = mouse_event.row;
-        // Only handle click if inside commit list area
-        if x >= commit_area.x && x < commit_area.x + commit_area.width && y >= commit_area.y + 3 && y < commit_area.y + commit_area.height {
-            // y - (commit_area.y + 3) is the index in the visible list
-            let list_index = (y - (commit_area.y + 3)) as usize;
+            let mut row = (y - list_top) as usize;
             match *selected_tab {
                 crate::CommitTab::Timeframe => {
-                    // Map list_index to commit index, considering scrolling
-                    let mut offset = 0;
-                    let mut found = None;
                     if *selected_repo_index == usize::MAX {
-                        // All projects: flatten
+                        // "All" view interleaves one repo-header row before each
+                        // repo's commits — skip those when mapping the click.
+                        let mut global = 0;
                         for (_repo, repo_commits) in commits.iter() {
-                            for _commit in repo_commits.iter() {
-                                if offset == list_index + *commitlist_scroll {
-                                    found = Some(offset);
-                                    break;
-                                }
-                                offset += 1;
+                            if row == 0 {
+                                return; // clicked a repo header
                             }
-                            if found.is_some() { break; }
+                            row -= 1;
+                            if row < repo_commits.len() {
+                                *selected_commit_index = Some(global + row);
+                                return;
+                            }
+                            row -= repo_commits.len();
+                            global += repo_commits.len();
                         }
                     } else if let Some((_repo, repo_commits)) = commits.get(*selected_repo_index) {
-                        if list_index + *commitlist_scroll < repo_commits.len() {
-                            found = Some(list_index + *commitlist_scroll);
+                        if row < repo_commits.len() {
+                            *selected_commit_index = Some(row);
                         }
                     }
-                    if let Some(idx) = found {
-                        *selected_commit_index = Some(idx);
-                        *focus = crate::models::FocusArea::CommitList;
-                    }
                 }
-                crate::CommitTab::Selection => {
-                    // Selection list: map to selected_commits
-                    let sel = selected_commits.lock().unwrap();
-                    if list_index < sel.set.len() {
-                        *selected_commit_index = Some(list_index);
-                        *focus = crate::models::FocusArea::CommitList;
-                    }
-                }
-                crate::CommitTab::Stats => {
-                    // Kein Commit auswählbar im Stats-Tab
-                }
+                // Selection list uses a header-interleaved, path-sorted layout
+                // whose index space differs from the timeframe view; just focus
+                // it rather than guessing a wrong commit index.
+                crate::CommitTab::Selection | crate::CommitTab::Stats => {}
             }
             return;
         }
