@@ -2,7 +2,6 @@ use config::{Config, ConfigError, File};
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
-use toml;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[allow(unused)]

@@ -1,7 +1,5 @@
 use std::error::Error;
 use crate::config;
-// use reqwest;
-// use serde_json;
 
 /// Sends the commit list and a summary prompt to Gemini using the specified model, returns the summary text.
 pub async fn fetch_gemini_commit_summary(prompt: &str, _lang: &str, model: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -26,9 +24,8 @@ pub async fn fetch_gemini_commit_summary(prompt: &str, _lang: &str, model: &str)
             return Ok(msg);
         }
     };
-    let text = response.candidates
-        .get(0)
-        .and_then(|c| c.content.parts.get(0))
+    let text = response.candidates.first()
+        .and_then(|c| c.content.parts.first())
         .and_then(|p| p.text.as_ref())
         .map(|s| s.trim().to_string())
         .unwrap_or_else(|| "No summary received.".to_string());

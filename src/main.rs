@@ -87,12 +87,10 @@ fn main() -> anyhow::Result<()> {
     let mut api_key = settings.gemini_api_key.clone().filter(|k| !k.is_empty()).or(api_key_from_env);
 
     // If no key is found, prompt the user
-    if api_key.is_none() && settings.prompt_for_api_key {
-        if unsafe { prompt_for_api_key()? } {
-            // Re-load settings to get the new key
-            settings = Settings::new().expect("Failed to reload settings after key entry");
-            api_key = settings.gemini_api_key.clone();
-        }
+    if api_key.is_none() && settings.prompt_for_api_key && unsafe { prompt_for_api_key()? } {
+        // Re-load settings to get the new key
+        settings = Settings::new().expect("Failed to reload settings after key entry");
+        api_key = settings.gemini_api_key.clone();
     }
     
     // If a key is available (from config or prompt), set it as an env var for gemini-rs to pick up
@@ -293,8 +291,8 @@ fn main() -> anyhow::Result<()> {
                         };
                         use crossterm::event::MouseEventKind;
                         if let MouseEventKind::Down(_) = mouse_event.kind {
-                            let x = mouse_event.column as u16;
-                            let y = mouse_event.row as u16;
+                            let x = mouse_event.column;
+                            let y = mouse_event.row;
                             if y >= tabs_area.y && y < tabs_area.y + tabs_area.height {
                                 // Calculate tab title widths with padding
                                 let tab_titles = ["Timeframe", "Selection"];

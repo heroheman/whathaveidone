@@ -31,7 +31,7 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
         commit.splitn(4, '|').collect()
     };
 
-    if let Some(hash) = parts.get(0) {
+    if let Some(hash) = parts.first() {
         spans.push(Span::styled(hash.trim().to_owned(), theme.commit_hash));
         spans.push(Span::raw(" | "));
     }
@@ -87,7 +87,7 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
 pub fn render_commits(
     f: &mut Frame,
     theme: &Theme,
-    _repos: &Vec<PathBuf>,
+    _repos: &[PathBuf],
     selected_repo_index: usize,
     data: &CommitData,
     interval_label: &str,
@@ -121,7 +121,7 @@ pub fn render_commits(
         .constraints([Constraint::Min(1), Constraint::Length(3)]).split(area);
 
     // Determine if we should dim the background
-    let dim_bg = popup_quote.map_or(false, |arc| arc.lock().unwrap().visible);
+    let dim_bg = popup_quote.is_some_and(|arc| arc.lock().unwrap().visible);
     let bg_fg = if dim_bg { theme.blurred_border } else { theme.text };
     let bg_cyan = if dim_bg { theme.blurred_border } else { theme.focus_border };
     let bg_magenta = if dim_bg { theme.blurred_border } else { Color::Magenta }; // Not in theme yet
@@ -306,7 +306,7 @@ pub fn render_commits(
                             }
                         } else {
                             let commit_line = if detailed_commit_view {
-                                commit.splitn(2, '\n').next().unwrap_or("")
+                                commit.split('\n').next().unwrap_or("")
                             } else {
                                 commit
                             };

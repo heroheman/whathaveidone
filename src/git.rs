@@ -116,7 +116,7 @@ pub fn get_commit_details(repo: &PathBuf, commit_hash: &str) -> Result<String> {
 pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 
 pub fn reload_commits(
-    repos: &Vec<PathBuf>,
+    repos: &[PathBuf],
     duration: Duration,
     filter_by_user: bool,
     detailed: bool,

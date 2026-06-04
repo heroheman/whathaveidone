@@ -15,7 +15,7 @@ pub fn handle_key(
     current_index: &mut usize,
     current_interval: &mut Duration,
     filter_by_user: &mut bool,
-    repos: &Vec<PathBuf>,
+    repos: &[PathBuf],
     commits: &mut CommitData,
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
@@ -183,13 +183,9 @@ pub fn handle_key(
                     if *selected_repo_index == usize::MAX {
                         if let Some(idx) = *selected_commit_index {
                             if idx>0 { *selected_commit_index = Some(idx-1); }
-                        } else {
-                            if commits.iter().map(|(_,c)|c.len()).sum::<usize>()>0 { *selected_commit_index = Some(0); }
-                        }
-                    } else {
-                        if let Some(idx)=*selected_commit_index {
-                            if idx>0 { *selected_commit_index = Some(idx-1); } }
-                    }
+                        } else if commits.iter().map(|(_,c)|c.len()).sum::<usize>()>0 { *selected_commit_index = Some(0); }
+                    } else if let Some(idx)=*selected_commit_index {
+                    if idx>0 { *selected_commit_index = Some(idx-1); } }
                     *commitlist_scroll = (*selected_commit_index).unwrap_or(0).min(*commitlist_scroll);
                 }
                 FocusArea::Detail => {
@@ -450,7 +446,7 @@ pub fn handle_key(
 
 pub fn handle_mouse(
     mouse_event: MouseEvent,
-    repos: &Vec<PathBuf>,
+    repos: &[PathBuf],
     commits: &CommitData,
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
@@ -470,8 +466,8 @@ pub fn handle_mouse(
     use tokio::runtime::Runtime;
     use std::fs;
     if let MouseEventKind::Down(_) = mouse_event.kind {
-        let x = mouse_event.column as u16;
-        let y = mouse_event.row as u16;
+        let x = mouse_event.column;
+        let y = mouse_event.row;
         // Check for popup summary X button
         {
             let popup = popup_quote.lock().unwrap();
@@ -652,8 +648,8 @@ pub fn handle_mouse(
                 .split(vertical_chunks[0])
         };
         let commit_area = columns[1];
-        let x = mouse_event.column as u16;
-        let y = mouse_event.row as u16;
+        let x = mouse_event.column;
+        let y = mouse_event.row;
         // Only handle click if inside commit list area
         if x >= commit_area.x && x < commit_area.x + commit_area.width && y >= commit_area.y + 3 && y < commit_area.y + commit_area.height {
             // y - (commit_area.y + 3) is the index in the visible list
@@ -666,7 +662,7 @@ pub fn handle_mouse(
                     if *selected_repo_index == usize::MAX {
                         // All projects: flatten
                         for (_repo, repo_commits) in commits.iter() {
-                            for (_i, _commit) in repo_commits.iter().enumerate() {
+                            for _commit in repo_commits.iter() {
                                 if offset == list_index + *commitlist_scroll {
                                     found = Some(offset);
                                     break;
@@ -706,8 +702,8 @@ pub fn handle_mouse(
             let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
             crate::ui::centered_rect(60, 80, area)
         };
-        let x = mouse_event.column as u16;
-        let y = mouse_event.row as u16;
+        let x = mouse_event.column;
+        let y = mouse_event.row;
         if let Ok(mut popup) = popup_quote.lock() {
             if popup.visible && x >= popup_area.x && x < popup_area.x + popup_area.width && y >= popup_area.y && y < popup_area.y + popup_area.height {
                 if popup.scroll > 0 {
@@ -723,8 +719,8 @@ pub fn handle_mouse(
             let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
             crate::ui::centered_rect(60, 80, area)
         };
-        let x = mouse_event.column as u16;
-        let y = mouse_event.row as u16;
+        let x = mouse_event.column;
+        let y = mouse_event.row;
         if let Ok(mut popup) = popup_quote.lock() {
             if popup.visible && x >= popup_area.x && x < popup_area.x + popup_area.width && y >= popup_area.y && y < popup_area.y + popup_area.height {
                 let text_lines = popup.text.lines().count() as u16;
@@ -732,7 +728,6 @@ pub fn handle_mouse(
                 if popup.scroll + popup_height < text_lines {
                     popup.scroll += 1;
                 }
-                return;
             }
         }
     }

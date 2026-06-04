@@ -6,7 +6,7 @@ use crate::git::get_commit_details;
 // Type alias for commit data for clarity
 pub type CommitData = Vec<(PathBuf, Vec<String>)>;
 
-pub fn get_active_commits<'a>(commits: &'a CommitData, selected_repo_index: usize) -> Option<&'a Vec<String>> {
+pub fn get_active_commits(commits: &CommitData, selected_repo_index: usize) -> Option<&Vec<String>> {
     if selected_repo_index == usize::MAX {
         None
     } else {
