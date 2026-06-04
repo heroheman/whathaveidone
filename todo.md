@@ -33,6 +33,26 @@ Sortiert nach Priorität. Verbesserungsvorschläge (Architektur) sind ans Ende v
 
 ---
 
+## Phase D — Workflow (UI/UX)
+
+Der Kern-Flow *Commits auswählen → Zusammenfassung erzeugen → kopieren* hat zu viele Schritte und zwei parallele Wege.
+
+- [ ] D1 — **Kopier-Feedback.** `c` kopiert still in die Zwischenablage, kein Hinweis. Kurzer Toast/Statuszeile „✓ In Zwischenablage kopiert".
+- [ ] D2 — **Redundante Selektion entfernen.** Selection-Tab [3] *und* `s`-Popup zeigen beide die Markierungen. `s`-Popup streichen, nur den Tab behalten.
+- [ ] D3 — **Auto-Copy / Enter.** Nach der Summary ist der nächste Schritt fast immer `c`. `Enter` im Popup = kopieren + schließen.
+- [ ] D4 — **Loading-Popup entrümpeln.** Debug-Variablen (`from/to/project/gemini_model/commits…`) hinter ein `--debug`-Flag; für Nutzer nur „🤖 Fasse N Commits aus M Projekten zusammen…".
+- [ ] D5 — **Abbrechen/Regenerieren.** Laufenden Request mit `Esc` canceln, fertige Summary mit `r` neu generieren.
+
+## Phase E — Layout (UI/UX)
+
+- [ ] E1 — **Sidebar 1 Zeile/Repo** statt 3 (Name + Count zusammen). Mehr sichtbare Repos; vereinfacht das `*3+2`-Index- und Maus-Hit-Test-Rechnen.
+- [ ] E2 — **Responsive Sidebar-Breite** statt feste 30 Spalten (Min/Max relativ zur Terminalbreite).
+- [ ] E3 — **Kontextabhängige Footer-Hints** statt einer überladenen, abgeschnittenen Zeile (nur relevante Tasten je nach Fokus/Popup).
+- [ ] E4 — **Stats-Tab** echt befüllen oder ganz entfernen. **VERTAGT** (später).
+- [ ] E5 — **Detail-Pane sauber clearen** statt manuellem Blanking mit Leerzeichen.
+
+---
+
 ## Verbesserungsvorschläge (Architektur) — VORERST AUSGESETZT
 
 Erledigt: V5, V3, V2. V6 wurde durch Phase C abgedeckt. Offen (bewusst vertagt): V1, V4.
