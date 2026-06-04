@@ -380,36 +380,7 @@ pub fn handle_key(
                 popup_quote.lock_safe().text = error_message;
                 return Ok(true);
             }
-            let p2 = popup_quote.clone();
-            let lang_owned = lang.to_string();
-            let gemini_model = gemini_model.to_string();
-            rt.spawn(async move {
-                // Animate spinner while loading
-                let popup_clone = p2.clone();
-                let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
-                // Start spinner loop and summary fetch in parallel
-                let fetch = crate::network::fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model);
-                tokio::pin!(fetch);
-                loop {
-                    tokio::select! {
-                        _ = interval.tick() => {
-                            let mut p = popup_clone.lock_safe();
-                            if !p.loading { break; }
-                            p.spinner_frame = p.spinner_frame.wrapping_add(1);
-                        }
-                        result = &mut fetch => {
-                            let summary = match result {
-                                Ok(s) => s,
-                                Err(e) => format!("Gemini error: {}", e),
-                            };
-                            let mut p = popup_clone.lock_safe();
-                            p.text = summary;
-                            p.loading = false;
-                            break;
-                        }
-                    }
-                }
-            });
+            spawn_summary(rt, popup_quote, prompt, lang.to_string(), gemini_model.to_string());
         }
         KeyCode::Char('c') => {
             // Kopieren, wenn Popup sichtbar
@@ -569,4 +540,40 @@ pub fn handle_mouse(
             }
         }
     }
+}
+/// Spawns the AI summary fetch on the shared runtime and animates the popup
+/// spinner until it resolves. The single place that dispatches a summary.
+fn spawn_summary(
+    rt: &Runtime,
+    popup_quote: &Arc<Mutex<PopupQuote>>,
+    prompt: String,
+    lang: String,
+    model: String,
+) {
+    let popup = popup_quote.clone();
+    rt.spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
+        // Run the spinner loop and the fetch concurrently.
+        let fetch = crate::network::fetch_gemini_commit_summary(&prompt, &lang, &model);
+        tokio::pin!(fetch);
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let mut p = popup.lock_safe();
+                    if !p.loading { break; }
+                    p.spinner_frame = p.spinner_frame.wrapping_add(1);
+                }
+                result = &mut fetch => {
+                    let summary = match result {
+                        Ok(s) => s,
+                        Err(e) => format!("Gemini error: {}", e),
+                    };
+                    let mut p = popup.lock_safe();
+                    p.text = summary;
+                    p.loading = false;
+                    break;
+                }
+            }
+        }
+    });
 }
