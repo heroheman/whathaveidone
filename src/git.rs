@@ -65,16 +65,26 @@ pub fn get_recent_commits(
         .arg(repo)
         .arg("log");
 
-    if let Some(from_date) = from {
+    // Lower bound: an explicit --from, otherwise the rolling interval window.
+    if let Some(from_date) = &from {
         cmd.arg("--since").arg(from_date);
-        if let Some(to_date) = to {
-            cmd.arg("--until").arg(to_date);
-        }
     } else {
         let since = SystemTime::now() - interval;
         let since_datetime: DateTime<Local> = since.into();
         let since_str = since_datetime.format("%Y-%m-%d %H:%M:%S").to_string();
         cmd.arg("--since").arg(&since_str);
+    }
+
+    // Upper bound: optional --to, applied independently of --from. A bare
+    // YYYY-MM-DD would otherwise mean midnight (excluding that whole day), so
+    // extend it to the end of the day to make the range inclusive.
+    if let Some(to_date) = &to {
+        let until = if to_date.contains(' ') || to_date.contains(':') {
+            to_date.clone()
+        } else {
+            format!("{} 23:59:59", to_date)
+        };
+        cmd.arg("--until").arg(until);
     }
 
     cmd.arg("--date=format:%Y-%m-%d %H:%M");
