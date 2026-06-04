@@ -188,6 +188,25 @@ pub fn render_commits(
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo,_)| repo).collect();
     let mut repo_list = Vec::new();
     let total_commits: usize = data.iter().map(|(_, c)| c.len()).sum();
+    let total_marked: usize = data.iter()
+        .flat_map(|(_, c)| c.iter())
+        .filter(|c| selected_set.contains(commit_hash(c)))
+        .count();
+    // Bulk-selection indicator for a sidebar row: ◉ when all current commits
+    // are marked, ◐ when some are, nothing when none. `sel_style` carries the
+    // row's reversed highlight so the glyph stays consistent when selected.
+    let mark_indicator = |marked: usize, count: usize, sel_style: Option<Style>| -> Option<Span> {
+        if count == 0 || marked == 0 {
+            return None;
+        }
+        let (glyph, color) = if marked >= count {
+            ("\u{25C9}", Color::Green) // ◉ fully marked
+        } else {
+            ("\u{25D0}", theme.text_highlight) // ◐ partially marked
+        };
+        let style = sel_style.unwrap_or_else(|| Style::default().fg(color).add_modifier(Modifier::BOLD));
+        Some(Span::styled(format!("  {glyph}"), style))
+    };
     // 'All' entry
     let all_selected = selected_repo_index == usize::MAX;
     let all_style = if all_selected {
@@ -195,10 +214,14 @@ pub fn render_commits(
     } else {
         Style::default().fg(bg_fg).add_modifier(Modifier::BOLD)
     };
-    repo_list.push(ListItem::new(Line::from(vec![
+    let mut all_spans = vec![
         Span::styled("\u{1F30D} All Projects", all_style), // 🌍
         Span::styled(format!("  {}", total_commits), Style::default().fg(theme.text_secondary)),
-    ])));
+    ];
+    if let Some(span) = mark_indicator(total_marked, total_commits, all_selected.then_some(all_style)) {
+        all_spans.push(span);
+    }
+    repo_list.push(ListItem::new(Line::from(all_spans)));
     // Visual divider, scaled to the sidebar width.
     let divider_width = sidebar_area.width.saturating_sub(2).max(1) as usize;
     repo_list.push(ListItem::new(Line::from(vec![Span::styled(
@@ -221,7 +244,9 @@ pub fn render_commits(
                 repo.to_string_lossy()
             };
             let selected = selected_repo_index == i;
-            let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
+            let repo_commits = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.as_slice()).unwrap_or(&[]);
+            let count = repo_commits.len();
+            let marked = repo_commits.iter().filter(|c| selected_set.contains(commit_hash(c))).count();
             let (name_style, count_style) = if selected {
                 let s = Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED);
                 (s, s)
@@ -231,10 +256,14 @@ pub fn render_commits(
                 let dim = Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM);
                 (dim, dim)
             };
-            repo_list.push(ListItem::new(Line::from(vec![
+            let mut spans = vec![
                 Span::styled(format!("\u{1F5C3} {}", name), name_style), // 🗃️
                 Span::styled(format!("  {}", count), count_style),
-            ])));
+            ];
+            if let Some(span) = mark_indicator(marked, count, selected.then_some(name_style)) {
+                spans.push(span);
+            }
+            repo_list.push(ListItem::new(Line::from(spans)));
         }
     }
     let sidebar = List::new(repo_list)
@@ -522,7 +551,7 @@ pub fn render_commits(
 
         let keys = match focus {
             FocusArea::Sidebar =>
-                "\u{2191}/\u{2193} repo \u{00B7} \u{2192}/l commits \u{00B7} Tab timeframe \u{00B7} u mine/all \u{00B7} a summary \u{00B7} q quit",
+                "\u{2191}/\u{2193} repo \u{00B7} \u{2192}/l commits \u{00B7} m mark repo \u{00B7} Tab timeframe \u{00B7} u mine/all \u{00B7} a summary \u{00B7} q quit",
             FocusArea::CommitList =>
                 "\u{2191}/\u{2193} commit \u{00B7} Space details \u{00B7} m mark \u{00B7} s selection \u{00B7} u mine/all \u{00B7} d details \u{00B7} a summary \u{00B7} q quit",
             FocusArea::Detail =>

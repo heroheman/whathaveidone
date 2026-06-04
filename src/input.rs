@@ -106,10 +106,33 @@ pub fn handle_key(
             }
         },
         KeyCode::Char('m') => {
-            // Toggle selection of current commit. Store the repo and full line so
-            // the mark survives later timeframe changes.
+            // Toggle selection. Store the repo and full line so the mark survives
+            // later timeframe changes.
             let mut sel = selected_commits.lock_safe();
-            if let Some(idx) = *selected_commit_index {
+            if *focus == FocusArea::Sidebar {
+                // Bulk toggle: all current-timeframe commits of the selected repo,
+                // or every repo when "All Projects" is selected.
+                let scope: Vec<&(PathBuf, Vec<String>)> = if *selected_repo_index == usize::MAX {
+                    commits.iter().collect()
+                } else {
+                    commits.get(*selected_repo_index).into_iter().collect()
+                };
+                // "Fill, then clear": only remove when EVERY commit in scope is
+                // already marked (and the scope is not empty).
+                let any = scope.iter().any(|(_, cs)| !cs.is_empty());
+                let all_marked = any && scope.iter().all(|(_, cs)|
+                    cs.iter().all(|c| sel.set.contains_key(crate::utils::commit_hash(c))));
+                for (repo, cs) in scope {
+                    for c in cs {
+                        let hash = crate::utils::commit_hash(c).to_string();
+                        if all_marked {
+                            sel.set.remove(&hash);
+                        } else {
+                            sel.set.entry(hash).or_insert_with(|| (repo.clone(), c.clone()));
+                        }
+                    }
+                }
+            } else if let Some(idx) = *selected_commit_index {
                 let found = if *selected_repo_index == usize::MAX {
                     // global index across all repos
                     let mut offset = 0;
