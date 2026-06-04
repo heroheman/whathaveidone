@@ -326,8 +326,7 @@ pub fn render_commits(
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total: usize = data.iter().map(|(_,c)|c.len()).sum();
-                let visible = commit_area.height.saturating_sub(2) as usize;
-                let pos = selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
+                let pos = selected_commit_index.unwrap_or(0);
                 let mut sb = ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
             } else if let Some((_repo, commits)) = data.get(selected_repo_index) {
@@ -349,8 +348,7 @@ pub fn render_commits(
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total=commits.len();
-                let visible=commit_area.height.saturating_sub(2) as usize;
-                let pos=selected_commit_index.unwrap_or(0).saturating_sub(visible.saturating_sub(visible));
+                let pos=selected_commit_index.unwrap_or(0);
                 let mut sb=ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
             } else {
