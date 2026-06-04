@@ -243,20 +243,15 @@ fn main() -> anyhow::Result<()> {
                     if let Some(sidebar_area) = last_sidebar_area {
                         handle_mouse(
                             mouse_event,
-                            &repos,
                             &commits,
                             &mut selected_repo_index,
                             &mut selected_commit_index,
                             &mut focus,
-                            &mut sidebar_scroll,
                             &mut commitlist_scroll,
                             &popup_quote,
                             &selected_commits,
                             sidebar_area,
                             &mut selected_tab,
-                            &lang,
-                            prompt_path.as_deref(),
-                            &gemini_model,
                         );
                         // Mouse support for commit list tabs
                         // Calculate tab area (same as in ui.rs)

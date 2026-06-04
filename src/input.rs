@@ -94,6 +94,9 @@ pub fn handle_key(
             }
         },
         KeyCode::Char('s') => {
+            // Toggle the popup listing all marked commits.
+            let mut sel = selected_commits.lock().unwrap();
+            sel.popup_visible = !sel.popup_visible;
         },
         KeyCode::Tab => {
             // Tab cycles forward through timeframes
@@ -436,25 +439,16 @@ pub fn handle_key(
 
 pub fn handle_mouse(
     mouse_event: MouseEvent,
-    repos: &[PathBuf],
     commits: &CommitData,
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
     focus: &mut FocusArea,
-    sidebar_scroll: &mut usize,
     commitlist_scroll: &mut usize,
-    // show_details: &mut bool, // Removed unused parameter
     popup_quote: &Arc<Mutex<PopupQuote>>,
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     sidebar_area: ratatui::prelude::Rect,
     selected_tab: &mut crate::CommitTab,
-    lang: &str, // <-- add lang argument
-    prompt_path: Option<&str>, // <-- add prompt_path argument
-    gemini_model: &str, // <-- add gemini_model argument
 ) {
-    use std::thread;
-    use tokio::runtime::Runtime;
-    use std::fs;
     if let MouseEventKind::Down(_) = mouse_event.kind {
         let x = mouse_event.column;
         let y = mouse_event.row;
@@ -481,77 +475,21 @@ pub fn handle_mouse(
         }
         // Sidebar area: x < sidebar_area.x + sidebar_area.width
         if x >= sidebar_area.x && x < sidebar_area.x + sidebar_area.width && y >= sidebar_area.y && y < sidebar_area.y + sidebar_area.height {
-            // Button box is last 3 lines of sidebar_area
-            let button_box_start = sidebar_area.y + sidebar_area.height - 3;
-            if y == button_box_start + 1 {
-                // Bookmarks button
-                let mut sel = selected_commits.lock().unwrap();
-                sel.popup_visible = true;
-                *focus = FocusArea::Sidebar;
-                return;
-            } else if y == button_box_start + 2 {
-                // AI Summary button
-                let prompt_template = if let Some(path) = prompt_path {
-                    fs::read_to_string(path).unwrap_or_else(|_| {
-                        String::from("No custom prompt file provided.")
-                    })
-                } else {
-                    String::from("No custom prompt file provided.")
-                };
-                let (project_name, commit_str) = if *selected_repo_index == usize::MAX {
-                    let all_commits = commits.iter()
-                        .flat_map(|(repo, msgs)| {
-                            let repo_name = repo.file_name().unwrap_or_default().to_string_lossy();
-                            msgs.iter().map(move |msg| format!("[{}] {}", repo_name, msg))
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    ("All projects".to_string(), all_commits)
-                } else {
-                    let project = commits.get(*selected_repo_index)
-                        .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
-                        .unwrap_or_else(|| "Project".to_string());
-                    let commitlist = commits.get(*selected_repo_index)
-                        .map(|(_repo, msgs)| msgs.join("\n"))
-                        .unwrap_or_default();
-                    (project, commitlist)
-                };
-                let interval_label = "";
-                let prompt = format!(
-                    "{template}\n\nProject: {project}\nTimeframe: {interval}\nCommits:\n{commits}",
-                    template=prompt_template,
-                    project=project_name,
-                    interval=interval_label,
-                    commits=commit_str
-                );
-                { let mut p = popup_quote.lock().unwrap(); p.visible=true; p.loading=true; p.spinner_frame=0; p.text=format!("Gemini model: {model}\n\nLoading commit summary...", model=gemini_model); }
-                let popup_quote = popup_quote.clone();
-                let lang_owned = lang.to_string();
-                let gemini_model = gemini_model.to_string();
-                thread::spawn(move || {
-                    let rt = Runtime::new().unwrap();
-                    rt.block_on(async move {
-                        let summary = match crate::network::fetch_gemini_commit_summary(&prompt, &lang_owned, &gemini_model).await {
-                            Ok(s) => s,
-                            Err(e) => format!("Gemini error: {}", e),
-                        };
-                        let mut p = popup_quote.lock().unwrap(); p.text=summary; p.loading=false;
-                    });
-                });
-                *focus = FocusArea::Sidebar;
-                return;
-            }
-            // Sidebar repo selection
-            let idx = (y as usize).saturating_sub(1 + *sidebar_scroll);
-            if idx == 0 {
+            // Sidebar layout (inside the top border): rows 0-2 = "All Projects",
+            // row 3 = divider, then each repo occupies 3 rows (name, count, blank).
+            // Mirrors the rendering in ui.rs; assumes the list top is visible.
+            let content_y = (y as usize).saturating_sub(sidebar_area.y as usize + 1);
+            if content_y < 3 {
                 *selected_repo_index = usize::MAX;
-            } else if idx > 0 && idx <= repos.len() {
-                *selected_repo_index = idx - 1;
-                // Only when a repo name is clicked, switch to timeframe tab (do not change focus)
-                *selected_tab = crate::CommitTab::Timeframe;
+            } else if content_y >= 4 {
+                let repo_idx = (content_y - 4) / 3;
+                if repo_idx < commits.len() {
+                    *selected_repo_index = repo_idx;
+                    // Clicking a repo name switches to the timeframe tab (focus unchanged).
+                    *selected_tab = crate::CommitTab::Timeframe;
+                }
             }
             *selected_commit_index = None;
-            // Do not change focus here
             return;
         } else {
             // Commit list area
