@@ -273,17 +273,12 @@ pub fn handle_key(
         }
         KeyCode::Char('q') => return Ok(false),
         KeyCode::Char('a') | KeyCode::Char('A') => {
-            let (_prompt_template, debug_msg) = if let Some(path) = prompt_path {
-                match std::fs::read_to_string(path) {
-                    Ok(content) => (content, Some(format!("Prompt loaded from {}", path))),
-                    Err(e) => {
-                        let fallback = String::from("Custom prompt file could not be loaded.");
-                        (fallback, Some(format!("Error loading {}: {}. Falling back to default prompt.", path, e)))
-                    }
-                }
-            } else {
-                let fallback = String::from("No custom prompt file provided.");
-                (fallback, Some("".to_string()))
+            // Load the custom prompt template once (if configured) and reuse it below.
+            let loaded_template = prompt_path.map(|path| (path, std::fs::read_to_string(path)));
+            let debug_msg = match &loaded_template {
+                Some((path, Ok(_))) => Some(format!("Prompt loaded from {}", path)),
+                Some((path, Err(e))) => Some(format!("Error loading {}: {}. Falling back to default prompt.", path, e)),
+                None => Some(String::new()),
             };
             // --- Gemini prompt construction update ---
             use chrono::Local;
@@ -332,25 +327,20 @@ pub fn handle_key(
                     ("Stats".to_string(), String::new())
                 }
             };
-            let prompt = if let Some(path) = prompt_path {
-                match std::fs::read_to_string(path) {
-                    Ok(mut template) => {
-                        template = template.replace("{from}", &from_date);
-                        template = template.replace("{to}", &to_date);
-                        template = template.replace("{project}", &project_name);
-                        template = template.replace("{projectname}", &project_name);
-                        template = template.replace("{interval}", interval_str);
-                        template = template.replace("{lang}", lang);
-                        template = template.replace("{commits}", &commit_str);
-                        template
-                    }
-                    Err(e) => {
-                        eprintln!("Error loading custom prompt '{}': {}. Falling back to default prompt.", path, e);
-                        crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str)
-                    }
+            let prompt = match &loaded_template {
+                Some((_path, Ok(template))) => template
+                    .replace("{from}", &from_date)
+                    .replace("{to}", &to_date)
+                    .replace("{project}", &project_name)
+                    .replace("{projectname}", &project_name)
+                    .replace("{interval}", interval_str)
+                    .replace("{lang}", lang)
+                    .replace("{commits}", &commit_str),
+                Some((path, Err(e))) => {
+                    eprintln!("Error loading custom prompt '{}': {}. Falling back to default prompt.", path, e);
+                    crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str)
                 }
-            } else {
-                crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str)
+                None => crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str),
             };
             {
                 let mut p = popup_quote.lock().unwrap();
