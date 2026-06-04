@@ -12,6 +12,7 @@
 <meta property="og:description" content="A Rust terminal UI that scans your repos, lists recent commits, and turns them into a standup summary with AI." />
 <meta property="og:type" content="website" />
 <meta property="og:url" content="https://heroheman.github.io/whathaveidone/" />
+<meta property="og:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png" />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -141,16 +142,23 @@
   .term-body .bul { color: var(--yellow); }
   .term-body pre { white-space: pre; margin: 0; }
 
-  /* real asciinema recording */
-  .cast {
-    display: block; margin-top: 56px; padding: 18px; border-radius: var(--radius);
+  /* screenshots */
+  .shot { margin: 0; }
+  .shot a {
+    display: block; padding: 12px; border-radius: var(--radius);
     background: var(--bg-soft); border: 1px solid var(--border);
-    box-shadow: 0 30px 80px rgba(0,0,0,0.45); transition: border-color .15s, transform .15s;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.4); transition: border-color .15s, transform .15s;
   }
-  .cast:hover { border-color: var(--accent); transform: translateY(-3px); text-decoration: none; }
-  .cast img { display: block; width: 100%; height: auto; border-radius: 8px; }
-  .cast-hint { display: block; text-align: center; margin-top: 14px; font-family:'JetBrains Mono'; font-size: .85rem; color: var(--fg-dim); }
-  .cast:hover .cast-hint { color: var(--accent); }
+  .shot a:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .shot img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  .shot figcaption { color: var(--fg-dim); font-size: .92rem; margin-top: 14px; line-height: 1.5; }
+  .shot figcaption strong { color: var(--fg); font-weight: 600; }
+  .shot-hero { margin-top: 56px; }
+  .shot-hero a { box-shadow: 0 30px 80px rgba(0,0,0,0.45); }
+  .shot-hero figcaption { text-align: center; }
+  .shots-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+  .shots-grid .shot-wide { grid-column: 1 / -1; }
+  @media (max-width: 720px) { .shots-grid { grid-template-columns: 1fr; } }
 
   /* ---------- sections ---------- */
   section { padding: 70px 0; border-top: 1px solid var(--border); }
@@ -231,6 +239,7 @@
     <a class="brand" href="#top"><span class="prompt">❯</span> whathaveidone</a>
     <div class="nav-links">
       <a href="#features">Features</a>
+      <a href="#screenshots">Screenshots</a>
       <a href="#install">Install</a>
       <a href="#usage">Usage</a>
       <a href="#keys">Keys</a>
@@ -269,13 +278,45 @@
       <span class="tag">MIT licensed</span>
     </div>
 
-    <!-- real recording -->
-    <a class="cast" href="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq" target="_blank" rel="noopener">
-      <img src="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg" alt="Recording of the whathaveidone terminal UI in action" loading="lazy" />
-      <span class="cast-hint">▸ Watch the full recording on asciinema ↗</span>
-    </a>
+    <!-- hero screenshot -->
+    <figure class="shot shot-hero">
+      <a href="images/screenshot1-overview.png" target="_blank" rel="noopener">
+        <img src="images/screenshot1-overview.png" alt="Commits view: repository sidebar and commit list with Timeframe / Selection tabs" loading="lazy" />
+      </a>
+      <figcaption>Commits view — repositories in the sidebar, recent commits grouped and ready to summarize.</figcaption>
+    </figure>
   </div>
 </header>
+
+<!-- SCREENSHOTS -->
+<section id="screenshots">
+  <div class="wrap">
+    <div class="sec-label">// screenshots</div>
+    <h2>See it in action.</h2>
+    <p class="sec-sub">A fast, keyboard-driven TUI with three views: commits, saved overviews, and a stats dashboard.</p>
+
+    <div class="shots-grid">
+      <figure class="shot">
+        <a href="images/screenshot2-overview-detail.png" target="_blank" rel="noopener">
+          <img src="images/screenshot2-overview-detail.png" alt="Commit detail pane showing the full commit message and author" loading="lazy" />
+        </a>
+        <figcaption><strong>Commit detail</strong> — open the detail pane to read the full message and author for any commit.</figcaption>
+      </figure>
+      <figure class="shot">
+        <a href="images/screenshot3-overview-ai.png" target="_blank" rel="noopener">
+          <img src="images/screenshot3-overview-ai.png" alt="Overviews view: master/detail browser of saved AI summaries" loading="lazy" />
+        </a>
+        <figcaption><strong>Saved overviews</strong> — browse, copy, regenerate, or delete past AI summaries; they persist across restarts.</figcaption>
+      </figure>
+      <figure class="shot shot-wide">
+        <a href="images/screenshot4-stats.png" target="_blank" rel="noopener">
+          <img src="images/screenshot4-stats.png" alt="Full-screen stats dashboard: commits per day, weekday, hour, and per repo" loading="lazy" />
+        </a>
+        <figcaption><strong>Stats dashboard</strong> — commits per day, by weekday and hour, busiest day, and a per-repo / author breakdown.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
 
 <!-- FEATURES -->
 <section id="features">
@@ -345,10 +386,10 @@ whid week <span class="fl">--lang</span> german</pre>
 <section id="usage">
   <div class="wrap">
     <div class="sec-label">// usage</div>
-    <h2>Two views, one keymap.</h2>
+    <h2>Three views, one keymap.</h2>
     <p class="sec-sub">The app separates <em>which view</em> you're in from <em>which pane</em> has focus.</p>
 
-    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(300px,1fr));">
+    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px,1fr));">
       <div class="card">
         <span class="ico">①</span><h3>Commits view</h3>
         <p>The sidebar of repositories plus the commit list. Switch the list between <strong>Timeframe</strong> and <strong>Selection</strong> mode with <kbd>s</kbd>. Press <kbd>a</kbd> to generate an AI overview.</p>
@@ -356,6 +397,10 @@ whid week <span class="fl">--lang</span> german</pre>
       <div class="card">
         <span class="ico">②</span><h3>Overviews view</h3>
         <p>A master/detail browser of past AI summaries. The left list holds every saved overview with its metadata; the right pane shows the full text. Copy, regenerate, or delete.</p>
+      </div>
+      <div class="card">
+        <span class="ico">③</span><h3>Stats view</h3>
+        <p>A full-screen dashboard with commits per day, by weekday and hour, your busiest day, and a per-repo and per-author breakdown.</p>
       </div>
     </div>
 
