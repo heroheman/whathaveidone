@@ -39,14 +39,17 @@ pub fn handle_key(
     match key {
         KeyCode::Char('1') => {
             *focus = FocusArea::Sidebar;
+            if *selected_tab != crate::CommitTab::Timeframe { *selected_commit_index = None; }
             *selected_tab = crate::CommitTab::Timeframe;
         },
         KeyCode::Char('2') => {
             *focus = FocusArea::CommitList;
+            if *selected_tab != crate::CommitTab::Timeframe { *selected_commit_index = None; }
             *selected_tab = crate::CommitTab::Timeframe;
         },
         KeyCode::Char('3') => {
             *focus = FocusArea::CommitList;
+            if *selected_tab != crate::CommitTab::Selection { *selected_commit_index = None; }
             *selected_tab = crate::CommitTab::Selection;
         },
         KeyCode::Char('w') => {
@@ -311,19 +314,15 @@ pub fn handle_key(
                     }
                 }
                 crate::CommitTab::Selection => {
+                    // Iterate commits in repo/commit order (not HashSet order) so
+                    // the prompt is deterministic across runs.
                     let sel = selected_commits.lock().unwrap();
-                    let mut hash_to_commit = std::collections::HashMap::new();
-                    for (_repo, repo_commits) in commits.iter() {
-                        for commit in repo_commits {
-                            if let Some(hash) = commit.split_whitespace().next() {
-                                hash_to_commit.insert(hash, commit);
-                            }
-                        }
-                    }
-                    let commit_lines: Vec<String> = sel.set.iter()
-                        .filter_map(|hash| hash_to_commit.get(hash.as_str()).map(|s| s.to_string()))
-                        .collect();
-                    let commit_str = commit_lines.join("\n");
+                    let commit_str = commits.iter()
+                        .flat_map(|(_repo, repo_commits)| repo_commits.iter())
+                        .filter(|commit| commit.split_whitespace().next().is_some_and(|h| sel.set.contains(h)))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                        .join("\n");
                     ("Selection".to_string(), commit_str)
                 }
                 crate::CommitTab::Stats => {

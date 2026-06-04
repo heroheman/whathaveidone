@@ -294,7 +294,11 @@ fn main() -> anyhow::Result<()> {
                                 for (i, title) in tab_titles.iter().enumerate() {
                                     let tab_width = title.len() as u16 + padding * 2;
                                     if x >= tab_x && x < tab_x + tab_width {
-                                        selected_tab = CommitTab::from_index(i);
+                                        let new_tab = CommitTab::from_index(i);
+                                        if new_tab != selected_tab {
+                                            selected_commit_index = None;
+                                        }
+                                        selected_tab = new_tab;
                                         break;
                                     }
                                     tab_x += tab_width + 1; // +1 for divider

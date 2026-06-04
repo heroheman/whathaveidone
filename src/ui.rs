@@ -659,20 +659,15 @@ pub fn render_commits(
             let mut lines = vec![Line::from(vec![
                 Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
             ])];
-            // Build a map of hash -> full commit line for lookup
-            let mut hash_to_commit = std::collections::HashMap::new();
+            // List marked commits in repo/commit order (not HashSet order) so
+            // the popup is stable across renders.
             for (_repo, commits) in data {
                 for commit in commits {
                     if let Some(hash) = commit.split_whitespace().next() {
-                        hash_to_commit.insert(hash, commit);
+                        if sel.set.contains(hash) {
+                            lines.push(Line::from(commit.clone()));
+                        }
                     }
-                }
-            }
-            for hash in &sel.set {
-                if let Some(commit_line) = hash_to_commit.get(hash.as_str()) {
-                    lines.push(Line::from((*commit_line).to_string()));
-                } else {
-                    lines.push(Line::from(hash.clone()));
                 }
             }
             let para = Paragraph::new(lines)
