@@ -320,29 +320,29 @@ pub fn render_commits(
         CommitTab::Timeframe => {
             if selected_repo_index==usize::MAX {
                 let mut items = Vec::new();
-                let mut offset=0;
+                // The list interleaves a repo-header row before each repo's
+                // commits, but `selected_commit_index` counts only commits — map
+                // it to the actual list-item index so the highlight lands right.
+                let mut selected_item = None;
+                let mut global = 0usize;
                 for (repo, commits) in data {
                     items.push(ListItem::new(Line::from(vec![Span::styled(
                         format!("\u{1F5C3}  {}", repo.file_name().unwrap_or_default().to_string_lossy()),
                         theme.repo_commit_count
                     )])));
-                    for (i, commit) in commits.iter().enumerate() {
-                        let idx = offset + i;
-                        let sel = Some(idx) == selected_commit_index;
+                    for commit in commits.iter() {
+                        if Some(global) == selected_commit_index { selected_item = Some(items.len()); }
                         let star = if selected_set.contains(commit_hash(commit)) {"*"} else {" "};
-                        let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                        let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                        let item_lines = commit_item_lines(commit, indicator, filter_by_user, detailed_commit_view, theme);
-                        let mut item = ListItem::new(item_lines).style(style);
-                        if sel {
-                            item = item.bg(theme.selection_bg);
-                        }
-                        items.push(item);
+                        let item_lines = commit_item_lines(commit, star.to_string(), filter_by_user, detailed_commit_view, theme);
+                        items.push(ListItem::new(item_lines).style(Style::default().fg(bg_fg)));
+                        global += 1;
                     }
-                    offset += commits.len();
                 }
-                let mut state = ListState::default(); state.select(selected_commit_index);
-                let list = List::new(items).block(focus_block(&header, focus==FocusArea::CommitList, theme));
+                let mut state = ListState::default(); state.select(selected_item);
+                let list = List::new(items)
+                    .block(focus_block(&header, focus==FocusArea::CommitList, theme))
+                    .highlight_symbol(commit_highlight_symbol(theme))
+                    .highlight_style(commit_highlight_style(theme));
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total: usize = data.iter().map(|(_,c)|c.len()).sum();
@@ -350,20 +350,16 @@ pub fn render_commits(
                 let mut sb = ScrollbarState::default().position(pos).content_length(total);
                 f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), commit_layout[1], &mut sb);
             } else if let Some((_repo, commits)) = data.get(selected_repo_index) {
-                let items: Vec<ListItem> = commits.iter().enumerate().map(|(i, commit)| {
-                    let sel = Some(i) == selected_commit_index;
+                let items: Vec<ListItem> = commits.iter().map(|commit| {
                     let star = if selected_set.contains(commit_hash(commit)) {"*"} else {" "};
-                    let indicator = format!("{}{}", star, if sel {"→"} else {"  " });
-                    let style = if sel {Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD)} else {Style::default().fg(bg_fg)};
-                    let item_lines = commit_item_lines(commit, indicator, filter_by_user, detailed_commit_view, theme);
-                    let mut item = ListItem::new(item_lines).style(style);
-                    if sel {
-                        item = item.bg(theme.selection_bg);
-                    }
-                    item
+                    let item_lines = commit_item_lines(commit, star.to_string(), filter_by_user, detailed_commit_view, theme);
+                    ListItem::new(item_lines).style(Style::default().fg(bg_fg))
                 }).collect();
                 let mut state=ListState::default(); state.select(selected_commit_index);
-                let list = List::new(items).block(focus_block(&header, focus==FocusArea::CommitList, theme));
+                let list = List::new(items)
+                    .block(focus_block(&header, focus==FocusArea::CommitList, theme))
+                    .highlight_symbol(commit_highlight_symbol(theme))
+                    .highlight_style(commit_highlight_style(theme));
                 f.render_stateful_widget(list, list_area, &mut state);
                 // scrollbar
                 let total=commits.len();
@@ -396,20 +392,28 @@ pub fn render_commits(
                         repo_to_commits.entry(repo).or_default().push(line);
                     }
                     let mut items = Vec::new();
+                    // Same header-interleave as the "All" list: map the commit
+                    // cursor to the real list-item index for the highlight.
+                    let mut selected_item = None;
+                    let mut c = 0usize;
                     for (repo, commits) in repo_to_commits.iter() {
                         items.push(ListItem::new(Line::from(vec![Span::styled(
                             format!("\u{1F5C3}  {}", repo.file_name().unwrap_or_default().to_string_lossy()),
                             theme.repo_commit_count
                         )])));
                         for commit in commits.iter() {
-                            let indicator = "*  ".to_string();
+                            if Some(c) == selected_commit_index { selected_item = Some(items.len()); }
                             let style = Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD);
-                            let line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
+                            let line = render_commit_line(commit, "*".to_string(), filter_by_user, detailed_commit_view, theme);
                             items.push(ListItem::new(line).style(style));
+                            c += 1;
                         }
                     }
-                    let mut state = ListState::default(); state.select(selected_commit_index);
-                    let list = List::new(items).block(focus_block("Selected Commits", focus==FocusArea::CommitList, theme));
+                    let mut state = ListState::default(); state.select(selected_item);
+                    let list = List::new(items)
+                        .block(focus_block("Selected Commits", focus==FocusArea::CommitList, theme))
+                        .highlight_symbol(commit_highlight_symbol(theme))
+                        .highlight_style(commit_highlight_style(theme));
                     f.render_stateful_widget(list, list_area, &mut state);
                 }
             }
@@ -826,6 +830,24 @@ fn focus_block(title: &str, focused: bool, theme: &Theme) -> Block<'static> {
         .borders(Borders::ALL)
         .title(format!("{marker}{title}"))
         .border_style(border_style)
+}
+
+/// The styled cursor symbol drawn in front of the selected commit row. Uses
+/// ratatui 0.30's `Into<Line>` highlight symbol so the marker carries its own
+/// color; non-selected rows get an equal-width blank, keeping columns aligned.
+fn commit_highlight_symbol(theme: &Theme) -> Line<'static> {
+    Line::from(Span::styled(
+        "\u{25B6} ", // ▶
+        Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD),
+    ))
+}
+
+/// The row style applied to the selected commit (background highlight).
+fn commit_highlight_style(theme: &Theme) -> Style {
+    Style::default()
+        .bg(theme.selection_bg)
+        .fg(theme.selection_fg)
+        .add_modifier(Modifier::BOLD)
 }
 
 /// Centers a rectangle of the given size within `area` (clamped to it).

@@ -11,6 +11,59 @@ use anyhow::Result;
 use crate::models::SelectedCommits;
 use crate::models::LockExt;
 use crate::models::{LlmConfig, LlmProvider};
+use ratatui::prelude::Rect;
+
+/// Rows moved per Page key or mouse-wheel notch — responsive without feeling jumpy.
+const PAGE_STEP: usize = 10;
+
+/// Total commit rows for the current sidebar selection (sum across all repos
+/// when "All" is selected, otherwise just the selected repo).
+fn commit_total(commits: &CommitData, selected_repo_index: usize) -> usize {
+    if selected_repo_index == usize::MAX {
+        commits.iter().map(|(_, c)| c.len()).sum()
+    } else {
+        commits.get(selected_repo_index).map(|(_, c)| c.len()).unwrap_or(0)
+    }
+}
+
+/// Moves the commit cursor by `delta` rows, clamped to `[0, total)`. A `None`
+/// selection enters the list at the first row. Shared by keyboard nav, Page
+/// keys and the mouse wheel so the clamping lives in one place.
+fn step_commit(selected_commit_index: &mut Option<usize>, commitlist_scroll: &mut usize, total: usize, delta: isize) {
+    if total == 0 {
+        *selected_commit_index = None;
+        return;
+    }
+    let next = match *selected_commit_index {
+        None => 0,
+        Some(cur) => (cur as isize + delta).clamp(0, total as isize - 1) as usize,
+    };
+    *selected_commit_index = Some(next);
+    *commitlist_scroll = next;
+}
+
+/// Moves the sidebar selection by `delta`, where `usize::MAX` is the "All"
+/// pseudo-row sitting just above repo index 0.
+fn step_repo(
+    selected_repo_index: &mut usize,
+    selected_commit_index: &mut Option<usize>,
+    sidebar_scroll: &mut usize,
+    repo_count: usize,
+    delta: isize,
+) {
+    let cur: isize = if *selected_repo_index == usize::MAX { -1 } else { *selected_repo_index as isize };
+    let next = (cur + delta).clamp(-1, repo_count as isize - 1);
+    *selected_repo_index = if next < 0 { usize::MAX } else { next as usize };
+    *selected_commit_index = None;
+    *sidebar_scroll = if *selected_repo_index == usize::MAX { 0 } else { *selected_repo_index };
+}
+
+/// Scrolls a Paragraph-style pane offset by `delta`, clamped at the top (0).
+/// The bottom is left unclamped (matching the existing arrow-key behavior);
+/// over-scroll is corrected on demand by End via `calculate_max_detail_scroll`.
+fn step_scroll(scroll: &mut u16, delta: i32) {
+    *scroll = (*scroll as i32 + delta).max(0) as u16;
+}
 
 // State is threaded by reference through the input layer (see CLAUDE.md), so
 // these handlers necessarily take many parameters.
@@ -229,63 +282,71 @@ pub fn handle_key(
         }
         KeyCode::Up | KeyCode::Char('k') => {
             match *focus {
-                FocusArea::Sidebar => {
-                    // Sidebar: Up navigation
-                    if (*selected_repo_index) == usize::MAX {
-                        // Already at ALL, do nothing
-                    } else if *selected_repo_index == 0 {
-                        // Move to ALL
-                        *selected_repo_index = usize::MAX;
-                    } else {
-                        *selected_repo_index -= 1;
-                    }
-                    *selected_commit_index = None;
-                    if *selected_repo_index == usize::MAX { *sidebar_scroll = 0; }
-                    else if *selected_repo_index < *sidebar_scroll { *sidebar_scroll = *selected_repo_index; }
-                }
+                FocusArea::Sidebar => step_repo(selected_repo_index, selected_commit_index, sidebar_scroll, commits.len(), -1),
                 FocusArea::CommitList => {
-                    if *selected_repo_index == usize::MAX {
-                        if let Some(idx) = *selected_commit_index {
-                            if idx>0 { *selected_commit_index = Some(idx-1); }
-                        } else if commits.iter().map(|(_,c)|c.len()).sum::<usize>()>0 { *selected_commit_index = Some(0); }
-                    } else if let Some(idx)=*selected_commit_index {
-                    if idx>0 { *selected_commit_index = Some(idx-1); } }
-                    *commitlist_scroll = (*selected_commit_index).unwrap_or(0).min(*commitlist_scroll);
+                    let total = commit_total(commits, *selected_repo_index);
+                    step_commit(selected_commit_index, commitlist_scroll, total, -1);
                 }
-                FocusArea::Detail => {
-                    if *detail_scroll>0 { *detail_scroll -=1; }
-                }
+                FocusArea::Detail => step_scroll(detail_scroll, -1),
             }
         }
         KeyCode::Down | KeyCode::Char('j') => {
             match *focus {
+                FocusArea::Sidebar => step_repo(selected_repo_index, selected_commit_index, sidebar_scroll, commits.len(), 1),
+                FocusArea::CommitList => {
+                    let total = commit_total(commits, *selected_repo_index);
+                    step_commit(selected_commit_index, commitlist_scroll, total, 1);
+                }
+                FocusArea::Detail => step_scroll(detail_scroll, 1),
+            }
+        }
+        KeyCode::PageUp | KeyCode::PageDown => {
+            let delta = if matches!(key, KeyCode::PageDown) { PAGE_STEP as isize } else { -(PAGE_STEP as isize) };
+            match *focus {
+                FocusArea::Sidebar => step_repo(selected_repo_index, selected_commit_index, sidebar_scroll, commits.len(), delta),
+                FocusArea::CommitList => {
+                    let total = commit_total(commits, *selected_repo_index);
+                    step_commit(selected_commit_index, commitlist_scroll, total, delta);
+                }
+                FocusArea::Detail => step_scroll(detail_scroll, delta as i32),
+            }
+        }
+        KeyCode::Home => {
+            match *focus {
                 FocusArea::Sidebar => {
-                    let repo_count = commits.len();
-                    if *selected_repo_index == usize::MAX {
-                        // Move from ALL to first project if any
-                        if repo_count > 0 { *selected_repo_index = 0; }
-                    } else if *selected_repo_index + 1 < repo_count {
-                        *selected_repo_index += 1;
-                    }
+                    *selected_repo_index = usize::MAX;
                     *selected_commit_index = None;
-                    if *selected_repo_index == usize::MAX { *sidebar_scroll = 0; }
-                    else if *selected_repo_index > *sidebar_scroll { *sidebar_scroll = *selected_repo_index; }
+                    *sidebar_scroll = 0;
                 }
                 FocusArea::CommitList => {
-                    let total_commits = if *selected_repo_index == usize::MAX {
-                        commits.iter().map(|(_,c)|c.len()).sum::<usize>()
-                    } else {
-                        commits.get(*selected_repo_index).map(|(_,c)|c.len()).unwrap_or(0)
-                    };
-                    if let Some(idx) = *selected_commit_index {
-                        if idx + 1 < total_commits { *selected_commit_index = Some(idx + 1); }
-                    } else if total_commits > 0 {
-                        *selected_commit_index = Some(0);
-                    }
-                    *commitlist_scroll = (*selected_commit_index).unwrap_or(0).max(*commitlist_scroll);
+                    let total = commit_total(commits, *selected_repo_index);
+                    *selected_commit_index = if total > 0 { Some(0) } else { None };
+                    *commitlist_scroll = 0;
+                }
+                FocusArea::Detail => *detail_scroll = 0,
+            }
+        }
+        KeyCode::End => {
+            match *focus {
+                FocusArea::Sidebar => {
+                    let repo_count = commits.len();
+                    *selected_repo_index = if repo_count > 0 { repo_count - 1 } else { usize::MAX };
+                    *selected_commit_index = None;
+                    *sidebar_scroll = if *selected_repo_index == usize::MAX { 0 } else { *selected_repo_index };
+                }
+                FocusArea::CommitList => {
+                    let total = commit_total(commits, *selected_repo_index);
+                    *selected_commit_index = if total > 0 { Some(total - 1) } else { None };
+                    *commitlist_scroll = selected_commit_index.unwrap_or(0);
                 }
                 FocusArea::Detail => {
-                    *detail_scroll += 1;
+                    if let Some(idx) = *selected_commit_index {
+                        // The detail pane spans the content row, so its inner text
+                        // height is the terminal rows minus the top bar, footer and
+                        // borders. Computed on demand (End shells out to git).
+                        let view_height = crossterm::terminal::size().map(|(_, r)| r.saturating_sub(6)).unwrap_or(20);
+                        *detail_scroll = crate::utils::calculate_max_detail_scroll(commits, *selected_repo_index, idx, view_height);
+                    }
                 }
             }
         }
@@ -557,6 +618,68 @@ pub fn handle_mouse(
         }
     }
 }
+/// Mouse-wheel scrolling for the commit browser. The hovered region (not the
+/// focused pane) decides what moves, matching how wheels behave elsewhere.
+#[allow(clippy::too_many_arguments)]
+pub fn handle_mouse_scroll(
+    col: u16,
+    row: u16,
+    down: bool,
+    layout: &crate::ui::AppLayout,
+    commits: &CommitData,
+    selected_repo_index: &mut usize,
+    selected_commit_index: &mut Option<usize>,
+    commitlist_scroll: &mut usize,
+    sidebar_scroll: &mut usize,
+    detail_scroll: &mut u16,
+) {
+    let delta: isize = if down { 1 } else { -1 };
+    let inside = |r: Rect| col >= r.x && col < r.x + r.width && row >= r.y && row < r.y + r.height;
+    if let Some(detail) = layout.detail {
+        if inside(detail) {
+            step_scroll(detail_scroll, delta as i32);
+            return;
+        }
+    }
+    if inside(layout.sidebar) {
+        step_repo(selected_repo_index, selected_commit_index, sidebar_scroll, commits.len(), delta);
+    } else if inside(layout.commit) {
+        let total = commit_total(commits, *selected_repo_index);
+        step_commit(selected_commit_index, commitlist_scroll, total, delta);
+    }
+}
+
+/// Mouse-wheel scrolling for the overview view: the left third is the overview
+/// list, the rest is the detail pane. Mirrors the master/detail split in
+/// `render_overview`, so the boundary is derived the same way.
+pub fn handle_overview_scroll(
+    col: u16,
+    area: Rect,
+    down: bool,
+    overview_state: &Arc<Mutex<OverviewState>>,
+    overview_selected: &mut usize,
+    overview_detail_scroll: &mut u16,
+) {
+    let list_w = (area.width / 3).clamp(28, 44);
+    let in_list = col < area.x + list_w;
+    let len = overview_state.lock_safe().items.len();
+    if in_list {
+        if down {
+            if len > 0 && *overview_selected + 1 < len {
+                *overview_selected += 1;
+                *overview_detail_scroll = 0;
+            }
+        } else if *overview_selected > 0 {
+            *overview_selected -= 1;
+            *overview_detail_scroll = 0;
+        }
+    } else if down {
+        *overview_detail_scroll = overview_detail_scroll.saturating_add(1);
+    } else {
+        *overview_detail_scroll = overview_detail_scroll.saturating_sub(1);
+    }
+}
+
 /// Copies `text` to the system clipboard, returning whether it succeeded.
 fn copy_to_clipboard(text: &str) -> bool {
     match Clipboard::new() {
@@ -665,6 +788,59 @@ fn handle_overview_key(
             }
             OverviewFocus::Detail => {
                 *overview_detail_scroll = overview_detail_scroll.saturating_add(1);
+            }
+        },
+        KeyCode::PageUp | KeyCode::PageDown => {
+            let down = matches!(key, KeyCode::PageDown);
+            match *overview_focus {
+                OverviewFocus::List => {
+                    if len > 0 {
+                        let delta = if down { PAGE_STEP as isize } else { -(PAGE_STEP as isize) };
+                        let next = (*overview_selected as isize + delta).clamp(0, len as isize - 1) as usize;
+                        if next != *overview_selected {
+                            *overview_selected = next;
+                            *overview_detail_scroll = 0;
+                        }
+                    }
+                }
+                OverviewFocus::Detail => {
+                    let step = PAGE_STEP as u16;
+                    *overview_detail_scroll = if down {
+                        overview_detail_scroll.saturating_add(step)
+                    } else {
+                        overview_detail_scroll.saturating_sub(step)
+                    };
+                }
+            }
+        }
+        KeyCode::Home => match *overview_focus {
+            OverviewFocus::List => {
+                if *overview_selected != 0 {
+                    *overview_selected = 0;
+                    *overview_detail_scroll = 0;
+                }
+            }
+            OverviewFocus::Detail => *overview_detail_scroll = 0,
+        },
+        KeyCode::End => match *overview_focus {
+            OverviewFocus::List => {
+                if len > 0 {
+                    let last = len - 1;
+                    if *overview_selected != last {
+                        *overview_selected = last;
+                        *overview_detail_scroll = 0;
+                    }
+                }
+            }
+            OverviewFocus::Detail => {
+                let lines = overview_state
+                    .lock_safe()
+                    .items
+                    .get(*overview_selected)
+                    .map(|r| r.text.lines().count())
+                    .unwrap_or(0);
+                let view_height = crossterm::terminal::size().map(|(_, r)| r.saturating_sub(10)).unwrap_or(20);
+                *overview_detail_scroll = (lines as u16).saturating_sub(view_height);
             }
         },
         // Copy the selected overview's text to the clipboard.

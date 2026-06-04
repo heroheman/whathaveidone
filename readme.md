@@ -10,9 +10,13 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 - Summarizes Git commit history for one or more projects
 - Groups changes by day and topic
 - Supports multiple repositories
+- Two views with a consistent keymap: a **Commits** view (`1`) and a persistent **Overviews** view (`2`)
+- AI overviews are saved to disk and survive restarts — browse, copy, regenerate, or delete past summaries in a master/detail layout
 - Customizable summary prompt
 - Copy summary to clipboard with one keypress
-- Mark commits with `m`, view all marked with `s`
+- Mark individual commits with `m`, or bulk-mark a whole repo's commits from the sidebar, then summarize just the selection
+- Compact, responsive layout with a top bar, a focus ring, and a context-aware footer
+- Built-in `?` help overlay listing every key
 
 ---
 
@@ -68,7 +72,7 @@ provider = "gemini"
 
 # The default Gemini model to use for summaries (when provider = "gemini").
 # This can be overridden by the --model command-line flag.
-gemini_model = "gemini-2.0-flash"
+gemini_model = "gemini-3.1-flash-lite"
 
 # --- Custom OpenAI-compatible provider settings (used when provider = "custom") ---
 # Base URL of the endpoint, e.g. https://openrouter.ai/api/v1 or https://api.openai.com/v1.
@@ -104,6 +108,17 @@ whathaveidone
 whid
 ```
 
+### Views & navigation
+
+The app has two top-level views and one consistent key model that separates *which view* you're in from *which pane* has focus:
+
+- **Commits** (`1`) — the sidebar of repositories plus the commit list. Switch the list between **Timeframe** and **Selection** mode with `s`.
+- **Overviews** (`2`) — a master/detail browser of past AI summaries (dimmed until you generate one). The left list holds every saved overview with its creation metadata; the right pane shows the full text.
+
+Everywhere: `Tab` / `Shift+Tab` move focus between panes, arrows or `h j k l` navigate and scroll within the focused pane, `?` toggles a help overlay listing every key, and `q` quits.
+
+Press `a` to generate an AI overview. The app switches to the Overviews view with a spinner; when it finishes, the summary becomes the newest saved entry (persisted to disk) so it's still there after a restart.
+
 ### Provider & model selection
 
 By default `whathaveidone` uses Google **Gemini**. You can switch to any **custom OpenAI-compatible** API (OpenRouter, Vercel AI Gateway, a local server, OpenAI itself) by setting `provider = "custom"` in your `whid.toml`, or with the `--provider` flag.
@@ -136,7 +151,7 @@ whathaveidone --provider custom \
   --model gpt-4o-mini
 ```
 
-The selected provider and model are shown in the summary popup (and in the `--debug` output) while waiting for the AI response.
+The selected provider and model are shown in the Overviews view (and in the `--debug` output) while waiting for the AI response.
 
 ### Language selection
 To use a specific language for the AI summary, add the `--lang <language>` parameter:
@@ -147,9 +162,9 @@ whid --lang english              # English (default)
 **Note:** The translation is performed by Gemini itself. The `--lang` command-line flag will always override the `lang` setting from your configuration file.
 
 ### Time interval selection
-Use `TAB` or `SHIFT-TAB` for interval selection. 
+Use `[` or `]` to cycle the time interval (previous / next). `Tab` / `Shift+Tab` move focus between panes instead.
 
-Alternativly: You can specify the start interval for commit history as parameter:
+Alternatively, you can specify the start interval for commit history as a parameter:
 - `24` or `today` (default)
 - `48`
 - `72` or `yesterday`
@@ -198,14 +213,32 @@ You can toggle a detailed, multi-line commit log view (similar to `git log --for
 ---
 
 ## Keyboard Shortcuts
-- Arrow keys / h j k l: Move between projects/commits
-- `Tab` / `Shift+Tab`: Change time interval
+
+Press `?` at any time for an in-app overlay of all keys.
+
+### Global
+- `1` / `2`: Switch view (Commits / Overviews)
+- `Tab` / `Shift+Tab`: Move focus between panes
+- `←` `→` / `h` `l`: Move focus left / right
+- `↑` `↓` / `j` `k`: Navigate / scroll in the focused pane
+- `?`: Toggle the help overlay
+- `q`: Quit
+
+### Commits view
+- `Space`: Open/close the detail pane
+- `s`: Toggle list mode (Timeframe / Selection)
+- `m`: Mark/unmark a commit — or, with the sidebar focused, mark/unmark the whole repo's commits
+- `[` / `]`: Previous / next timeframe
+- `u`: Toggle mine / all authors
 - `d`: Toggle detailed commit view (multi-line, git log style)
-- `a` or `A`: Show AI summary popup
-- `c`: Copy summary to clipboard
-- `m`: Mark/unmark commit
-- `s`: Show popup with all marked commits
-- `Q`: Quit
+- `a`: Generate an AI overview
+
+### Overviews view
+- `Enter` / `c`: Copy the selected overview to the clipboard
+- `r`: Regenerate the last overview
+- `x` / `Del`: Delete the selected overview (asks `y`/`n` to confirm)
+- `a`: Generate a new overview
+- `Esc`: Back to Commits (cancels an in-flight generation)
 
 ---
 

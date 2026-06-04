@@ -18,7 +18,7 @@ use ratatui::prelude::*;
 use models::{FocusArea, OverviewState, OverviewFocus, LlmConfig, LlmProvider};
 use git::{find_git_repos, reload_commits};
 use ui::render_commits;
-use crate::input::{handle_key, handle_mouse};
+use crate::input::{handle_key, handle_mouse, handle_mouse_scroll, handle_overview_scroll};
 use crate::models::SelectedCommits;
 use crate::models::LockExt;
 use std::collections::BTreeMap;
@@ -311,46 +311,79 @@ fn main() -> anyhow::Result<()> {
                     }
                 }
                 Event::Mouse(mouse_event) => {
-                    // Mouse only drives the commit browser; the overview view is
-                    // keyboard-only.
-                    if app_view == AppView::Commits {
-                    if let Some(sidebar_area) = last_sidebar_area {
-                        handle_mouse(
-                            mouse_event,
-                            &commits,
-                            &mut selected_repo_index,
-                            &mut selected_commit_index,
-                            &mut focus,
-                            sidebar_area,
-                            &mut selected_tab,
-                        );
-                        // Mouse support for commit list tabs — same shared layout.
-                        let area = terminal.get_frame().area();
-                        let tabs_area = ui::compute_layout(area, show_details, selected_commit_index.is_some()).tabs;
-                        use crossterm::event::MouseEventKind;
-                        if let MouseEventKind::Down(_) = mouse_event.kind {
-                            let x = mouse_event.column;
-                            let y = mouse_event.row;
-                            if y >= tabs_area.y && y < tabs_area.y + tabs_area.height {
-                                // Calculate tab title widths with padding
-                                let tab_titles = ["Timeframe", "Selection"];
-                                let padding = 2; // 1 space left/right
-                                let mut tab_x = tabs_area.x;
-                                for (i, title) in tab_titles.iter().enumerate() {
-                                    let tab_width = title.len() as u16 + padding * 2;
-                                    if x >= tab_x && x < tab_x + tab_width {
-                                        let new_tab = CommitTab::from_index(i);
-                                        if new_tab != selected_tab {
-                                            selected_commit_index = None;
-                                        }
-                                        selected_tab = new_tab;
-                                        break;
-                                    }
-                                    tab_x += tab_width + 1; // +1 for divider
+                    use crossterm::event::MouseEventKind;
+                    let area = terminal.get_frame().area();
+                    match mouse_event.kind {
+                        // Wheel works in both views; the hovered region decides what scrolls.
+                        MouseEventKind::ScrollUp | MouseEventKind::ScrollDown => {
+                            let down = matches!(mouse_event.kind, MouseEventKind::ScrollDown);
+                            match app_view {
+                                AppView::Commits => {
+                                    let layout = ui::compute_layout(area, show_details, selected_commit_index.is_some());
+                                    handle_mouse_scroll(
+                                        mouse_event.column,
+                                        mouse_event.row,
+                                        down,
+                                        &layout,
+                                        &commits,
+                                        &mut selected_repo_index,
+                                        &mut selected_commit_index,
+                                        &mut commitlist_scroll,
+                                        &mut sidebar_scroll,
+                                        &mut detail_scroll,
+                                    );
+                                }
+                                AppView::Overview => {
+                                    handle_overview_scroll(
+                                        mouse_event.column,
+                                        area,
+                                        down,
+                                        &overview_state,
+                                        &mut overview_selected,
+                                        &mut overview_detail_scroll,
+                                    );
                                 }
                             }
                         }
-                    }
+                        // Clicks only drive the commit browser.
+                        MouseEventKind::Down(_) => {
+                            if app_view == AppView::Commits {
+                                if let Some(sidebar_area) = last_sidebar_area {
+                                    handle_mouse(
+                                        mouse_event,
+                                        &commits,
+                                        &mut selected_repo_index,
+                                        &mut selected_commit_index,
+                                        &mut focus,
+                                        sidebar_area,
+                                        &mut selected_tab,
+                                    );
+                                    // Mouse support for commit list tabs — same shared layout.
+                                    let tabs_area = ui::compute_layout(area, show_details, selected_commit_index.is_some()).tabs;
+                                    let x = mouse_event.column;
+                                    let y = mouse_event.row;
+                                    if y >= tabs_area.y && y < tabs_area.y + tabs_area.height {
+                                        // Calculate tab title widths with padding
+                                        let tab_titles = ["Timeframe", "Selection"];
+                                        let padding = 2; // 1 space left/right
+                                        let mut tab_x = tabs_area.x;
+                                        for (i, title) in tab_titles.iter().enumerate() {
+                                            let tab_width = title.len() as u16 + padding * 2;
+                                            if x >= tab_x && x < tab_x + tab_width {
+                                                let new_tab = CommitTab::from_index(i);
+                                                if new_tab != selected_tab {
+                                                    selected_commit_index = None;
+                                                }
+                                                selected_tab = new_tab;
+                                                break;
+                                            }
+                                            tab_x += tab_width + 1; // +1 for divider
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
                 _ => {}

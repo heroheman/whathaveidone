@@ -60,49 +60,44 @@ pub fn calculate_visible_height(f: &Frame, has_details: bool) -> u16 {
     }
 }
 
-#[allow(dead_code)]
+/// Maximum scroll offset for the detail pane showing `commit_index`, given the
+/// pane's inner (border-excluded) `view_height`, so End and clamping land on the
+/// last line instead of scrolling into empty space. Shells out to git for the
+/// commit body, so call it on demand (e.g. the End key), not every frame.
 pub fn calculate_max_detail_scroll(
     commits: &CommitData,
     selected_repo_index: usize,
     commit_index: usize,
-) -> Result<u16> {
+    view_height: u16,
+) -> u16 {
+    let detail_for = |repo: &PathBuf, commit: &str| {
+        let hash = commit_hash(commit);
+        if hash.is_empty() {
+            return 0;
+        }
+        get_commit_details(repo, hash)
+            .map(|details| calculate_max_scroll(&details, view_height))
+            .unwrap_or(0)
+    };
     if selected_repo_index == usize::MAX {
         let mut idx = 0;
         for (repo, repo_commits) in commits {
             if commit_index < idx + repo_commits.len() {
-                let commit = &repo_commits[commit_index - idx];
-                let commit_hash = commit_hash(commit);
-                if !commit_hash.is_empty() {
-                    match get_commit_details(repo, commit_hash) {
-                        Ok(details) => return calculate_max_scroll(details, 15),
-                        Err(_) => return Ok(0),
-                    }
-                }
-                return Ok(0);
+                return detail_for(repo, &repo_commits[commit_index - idx]);
             }
             idx += repo_commits.len();
         }
-        return Ok(0);
+        0
     } else if let Some((repo, repo_commits)) = commits.get(selected_repo_index) {
-        if let Some(commit) = repo_commits.get(commit_index) {
-            let commit_hash = commit_hash(commit);
-            if !commit_hash.is_empty() {
-                match get_commit_details(repo, commit_hash) {
-                    Ok(details) => return calculate_max_scroll(details, 15),
-                    Err(_) => return Ok(0),
-                }
-            }
-        }
+        repo_commits.get(commit_index).map(|c| detail_for(repo, c)).unwrap_or(0)
+    } else {
+        0
     }
-    Ok(0)
 }
 
-#[allow(dead_code)]
-pub fn calculate_max_scroll(content: String, view_height: u16) -> Result<u16> {
+/// Maximum vertical scroll offset so the last content line still fits in a
+/// `view_height`-tall viewport (0 when everything already fits).
+pub fn calculate_max_scroll(content: &str, view_height: u16) -> u16 {
     let content_lines = content.lines().count() as u16;
-    let visible_lines = view_height.saturating_sub(2);
-    if content_lines <= visible_lines {
-        return Ok(0);
-    }
-    Ok(content_lines.saturating_sub(visible_lines))
+    content_lines.saturating_sub(view_height)
 }
