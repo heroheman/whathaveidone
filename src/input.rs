@@ -35,6 +35,7 @@ pub fn handle_key(
     detailed_commit_view: &mut bool, // <-- add new argument
     from_date: Option<String>,
     to_date: Option<String>,
+    debug: bool, // <-- show prompt-construction debug info in the popup
 ) -> Result<bool> {
     let lang = if lang.is_empty() { "english" } else { lang };
     match key {
@@ -98,9 +99,10 @@ pub fn handle_key(
             }
         },
         KeyCode::Char('s') => {
-            // Toggle the popup listing all marked commits.
-            let mut sel = selected_commits.lock_safe();
-            sel.popup_visible = !sel.popup_visible;
+            // Jump to the Selection view (the single place marked commits live).
+            *focus = FocusArea::CommitList;
+            if *selected_tab != crate::CommitTab::Selection { *selected_commit_index = None; }
+            *selected_tab = crate::CommitTab::Selection;
         },
         KeyCode::Tab => {
             // Tab cycles forward through timeframes
@@ -293,7 +295,7 @@ pub fn handle_key(
             let to_date = now.format("%Y-%m-%d").to_string();
             let from_date = (now - *current_interval).format("%Y-%m-%d").to_string();
             let interval_str = intervals[*current_index].0;
-            let (project_name, commit_str) = match selected_tab {
+            let (project_name, commit_str, commit_count) = match selected_tab {
                 crate::CommitTab::Timeframe => {
                     if (*selected_repo_index) == usize::MAX {
                         let all_commits = commits.iter()
@@ -303,7 +305,8 @@ pub fn handle_key(
                             })
                             .collect::<Vec<_>>()
                             .join("\n");
-                        ("All projects".to_string(), all_commits)
+                        let count = commits.iter().map(|(_, c)| c.len()).sum();
+                        ("All projects".to_string(), all_commits, count)
                     } else {
                         let project = commits.get(*selected_repo_index)
                             .map(|(repo, _)| repo.file_name().unwrap_or_default().to_string_lossy().to_string())
@@ -311,7 +314,8 @@ pub fn handle_key(
                         let commitlist = commits.get(*selected_repo_index)
                             .map(|(_repo, msgs)| msgs.join("\n"))
                             .unwrap_or_default();
-                        (project, commitlist)
+                        let count = commits.get(*selected_repo_index).map(|(_, c)| c.len()).unwrap_or(0);
+                        (project, commitlist, count)
                     }
                 }
                 crate::CommitTab::Selection => {
@@ -322,10 +326,10 @@ pub fn handle_key(
                         .map(|(_repo, line)| line.clone())
                         .collect::<Vec<_>>()
                         .join("\n");
-                    ("Selection".to_string(), commit_str)
+                    ("Selection".to_string(), commit_str, sel.set.len())
                 }
                 crate::CommitTab::Stats => {
-                    ("Stats".to_string(), String::new())
+                    ("Stats".to_string(), String::new(), 0)
                 }
             };
             let prompt = match &loaded_template {
@@ -348,26 +352,29 @@ pub fn handle_key(
                 p.visible = true;
                 p.loading = true;
                 p.spinner_frame = 0;
-                p.text = match (&debug_msg, prompt_path) {
-                    (Some(msg), Some(_)) | (Some(msg), None) => format!(
-                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [length: {} chars]\n\nLoading commit summary...",
+                p.copied = false;
+                // User-facing loading text is concise; the prompt-construction
+                // detail only appears under `--debug`.
+                p.text = if debug {
+                    let msg = debug_msg.as_deref().unwrap_or("");
+                    format!(
+                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [{count} commits, {} chars]\n\nLoading commit summary...",
                         commit_str.len(),
                         msg=msg,
                         from=from_date,
                         to=to_date,
                         project=project_name,
                         lang=lang,
-                        gemini_model=gemini_model
-                    ),
-                    (None, _) => format!(
-                        "Prompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [length: {} chars]\n\nLoading commit summary...",
-                        commit_str.len(),
-                        from=from_date,
-                        to=to_date,
-                        project=project_name,
-                        lang=lang,
-                        gemini_model=gemini_model
-                    ),
+                        gemini_model=gemini_model,
+                        count=commit_count,
+                    )
+                } else {
+                    format!(
+                        "Summarizing {} commit{} from {}…",
+                        commit_count,
+                        if commit_count == 1 { "" } else { "s" },
+                        project_name,
+                    )
                 };
             }
             // Check for Gemini API key before spawning async task
@@ -383,18 +390,53 @@ pub fn handle_key(
             spawn_summary(rt, popup_quote, prompt, lang.to_string(), gemini_model.to_string());
         }
         KeyCode::Char('c') => {
-            // Kopieren, wenn Popup sichtbar
-            let popup = popup_quote.lock_safe();
-            if popup.visible && !popup.loading {
-                let mut clipboard = Clipboard::new().ok();
-                if let Some(cb) = clipboard.as_mut() {
-                    let _ = cb.set_text(popup.text.clone());
-                }
+            // Copy the summary to the clipboard and flag it so the popup footer
+            // can confirm. Only meaningful while a finished summary is shown.
+            let mut popup = popup_quote.lock_safe();
+            if popup.visible && !popup.loading && copy_to_clipboard(&popup.text) {
+                popup.copied = true;
             }
         }
-        KeyCode::Esc => { 
-            let mut p = popup_quote.lock_safe(); p.visible=false; p.scroll=0; 
-            let mut sel = selected_commits.lock_safe(); sel.popup_visible = false;
+        KeyCode::Enter => {
+            // Enter on a finished summary copies and closes in one step — the
+            // usual last action in the standup flow.
+            let mut popup = popup_quote.lock_safe();
+            if popup.visible && !popup.loading {
+                if copy_to_clipboard(&popup.text) {
+                    popup.copied = true;
+                }
+                popup.visible = false;
+                popup.scroll = 0;
+            }
+        }
+        KeyCode::Char('r') => {
+            // Regenerate the last summary (e.g. after closing it) without
+            // rebuilding the prompt from the current selection.
+            let request = {
+                let popup = popup_quote.lock_safe();
+                if popup.loading { None } else { popup.last_request.clone() }
+            };
+            if let Some((prompt, req_lang, model)) = request {
+                {
+                    let mut p = popup_quote.lock_safe();
+                    p.visible = true;
+                    p.loading = true;
+                    p.spinner_frame = 0;
+                    p.copied = false;
+                    p.scroll = 0;
+                    p.text = "Regenerating summary…".to_string();
+                }
+                spawn_summary(rt, popup_quote, prompt, req_lang, model);
+            }
+        }
+        KeyCode::Esc => {
+            // Closing while loading also cancels the in-flight request: clearing
+            // `loading` makes the spinner loop break on its next tick, which
+            // drops the pending fetch future (and thus the HTTP request).
+            let mut p = popup_quote.lock_safe();
+            p.visible = false;
+            p.loading = false;
+            p.scroll = 0;
         }
         KeyCode::Char('d') => {
             *detailed_commit_view = !*detailed_commit_view;
@@ -541,6 +583,14 @@ pub fn handle_mouse(
         }
     }
 }
+/// Copies `text` to the system clipboard, returning whether it succeeded.
+fn copy_to_clipboard(text: &str) -> bool {
+    match Clipboard::new() {
+        Ok(mut cb) => cb.set_text(text.to_owned()).is_ok(),
+        Err(_) => false,
+    }
+}
+
 /// Spawns the AI summary fetch on the shared runtime and animates the popup
 /// spinner until it resolves. The single place that dispatches a summary.
 fn spawn_summary(
@@ -550,6 +600,8 @@ fn spawn_summary(
     lang: String,
     model: String,
 ) {
+    // Remember the request so `r` can regenerate it later.
+    popup_quote.lock_safe().last_request = Some((prompt.clone(), lang.clone(), model.clone()));
     let popup = popup_quote.clone();
     rt.spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));

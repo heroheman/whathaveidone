@@ -33,6 +33,10 @@ pub struct PopupQuote {
     pub loading: bool,
     pub scroll: u16, // scroll offset for popup summary
     pub spinner_frame: u8, // frame index for loading spinner
+    pub copied: bool, // true once the current summary was copied to the clipboard
+    /// The last dispatched request (prompt, lang, model), kept so `r` can
+    /// regenerate the summary without rebuilding it from scratch.
+    pub last_request: Option<(String, String, String)>,
 }
 
 /// State for selected/marked commits.
@@ -44,5 +48,4 @@ pub struct PopupQuote {
 #[derive(Debug)]
 pub struct SelectedCommits {
     pub set: BTreeMap<String, (PathBuf, String)>,
-    pub popup_visible: bool,
 }

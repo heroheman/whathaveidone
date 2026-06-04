@@ -54,6 +54,10 @@ struct Cli {
     /// End date for the commit history (YYYY-MM-DD), defaults to today
     #[arg(long, value_name = "YYYY-MM-DD")]
     to: Option<String>,
+
+    /// Show prompt-construction debug info in the AI summary popup
+    #[arg(long)]
+    debug: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -116,6 +120,7 @@ fn main() -> anyhow::Result<()> {
     let cli_gemini_model = cli.model;
     let from_date = cli.from;
     let to_date = cli.to;
+    let debug = cli.debug;
     let mut gemini_model = settings.gemini_model;
     if let Some(model) = cli_gemini_model {
         gemini_model = model;
@@ -145,8 +150,8 @@ fn main() -> anyhow::Result<()> {
     let mut commitlist_scroll = 0;
     let mut detail_scroll = 0;
 
-    let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false, scroll: 0, spinner_frame: 0 }));
-    let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: BTreeMap::new(), popup_visible: false }));
+    let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false, scroll: 0, spinner_frame: 0, copied: false, last_request: None }));
+    let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: BTreeMap::new() }));
 
     let rt = Runtime::new()?;
     terminal::enable_raw_mode()?;
@@ -222,6 +227,7 @@ fn main() -> anyhow::Result<()> {
                         &mut detailed_commit_view,
                         from_date.clone(),
                         to_date.clone(),
+                        debug,
                     )?;
                     if !handled {
                         break;

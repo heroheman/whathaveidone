@@ -496,7 +496,7 @@ pub fn render_commits(
     let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
     let detail_label = if detailed_commit_view {"d: Details ON"} else {"d: Details OFF"};
     let footer = Paragraph::new(format!(
-        "Tab/Shift+Tab Timeframe | ↑/↓/ or h/j/k/l Navigation | <Space> Details |  m Mark | s Show Marked | a AI summary | {} | {} | Q Quit",
+        "Tab/Shift+Tab Timeframe | ↑/↓ or h/j/k/l Navigation | <Space> Details | m Mark | s Selection | a AI summary | {} | {} | q Quit",
         filter_label, detail_label
     ))
     .block(Block::default().borders(Borders::ALL))
@@ -607,35 +607,17 @@ pub fn render_commits(
                 width: popup_area.width,
                 height: 1,
             };
-            let footer = Paragraph::new("Press c to copy | ↑/↓ scroll | Esc close")
-                .style(Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC));
+            let footer = if popup.loading {
+                Paragraph::new("Esc cancel")
+                    .style(Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC))
+            } else if popup.copied {
+                Paragraph::new("✓ Copied to clipboard")
+                    .style(Style::default().fg(theme.commit_author.fg.unwrap_or(Color::Green)).add_modifier(Modifier::BOLD))
+            } else {
+                Paragraph::new("Enter copy & close | c copy | r regenerate | ↑/↓ scroll | Esc close")
+                    .style(Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC))
+            };
             f.render_widget(footer, footer_area);
-        }
-    }
-
-    if let Some(selected_commits) = selected_commits {
-        let sel = selected_commits.lock_safe();
-        if sel.popup_visible {
-            let popup_area = centered_rect(60, 40, f.area());
-            f.render_widget(Clear, popup_area);
-            // Header with icon and color
-            let mut lines = vec![Line::from(vec![
-                Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-            ])];
-            // List marked commits from the stored selection (deterministic by
-            // hash), independent of the current timeframe.
-            for (_repo, line) in sel.set.values() {
-                lines.push(Line::from(line.clone()));
-            }
-            let para = Paragraph::new(lines)
-                .block(Block::default()
-                    .title(Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)))
-                    .borders(Borders::ALL)
-                    .style(theme.popup_border))
-                .wrap(Wrap{trim:true})
-                .alignment(Alignment::Left)
-                .style(theme.popup_text);
-            f.render_widget(para, popup_area);
         }
     }
 }
