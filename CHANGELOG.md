@@ -2,6 +2,70 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-06-04
+
+### 🚀 Features
+
+- *(ui)* Streamline AI summary workflow
+- *(ui)* Compact, responsive layout and context-aware footer
+- *(ui)* Colored state chips in the status line
+- *(ai)* Integrate custom llm provider
+- *(history)* Add persistent overview store
+- *(ui)* Persistent AI overview view, replacing the popup
+- *(ui)* Top bar + prominent generating banner for overview view
+- *(ui)* Bulk-mark a repo's commits from the sidebar
+- *(ui)* Persistent top bar + focus ring for view navigation
+- *(nav)* Unified two-level keymap, help overlay, inline delete
+- *(ui)* Enhance navigation with mouse support and scrolling for commits and overviews
+- *(stats)* Add full-screen stats dashboard (key 3)
+
+### 🐛 Bug Fixes
+
+- *(input)* Correct sidebar mouse mapping and remove dead button box
+- Honor user filter and highlight hash/date in detailed view
+- *(input)* Single correct commit-list click handler
+- Reset commit selection on tab switch and stabilize selection order
+- Persist marked commits across timeframe changes
+- *(utils)* Bounds-check get_active_commits
+- *(git)* Harden repository discovery
+- *(git)* Apply --to independently and make it day-inclusive
+- *(config)* Never discard an invalid user config, report errors clearly
+- Tolerate poisoned mutexes instead of crashing the TUI
+- Extract commit hash correctly and show subject in detailed view
+- *(ui)* Decouple Space detail pane from the detailed-list toggle
+- *(ui)* Align overview switch with the tabs, drop count
+
+### 🚜 Refactor
+
+- Drop no-op scrollbar position expression
+- Read custom prompt file once per AI summary
+- *(input)* Extract single spawn_summary dispatch
+- Compute the main layout in one place
+
+### 📚 Documentation
+
+- Add prioritized code-analysis todo list
+- Mark code-analysis todo items as resolved
+- Record architecture improvements status (V2/V3/V5/V6 done)
+- *(todo)* Add Workflow (Phase D) and Layout (Phase E) UX sections
+- *(todo)* Mark Phase D and E items done
+
+### ⚡ Performance
+
+- Redraw only on events or while loading
+
+### 🎨 Styling
+
+- Fix clippy warnings
+- *(ui)* Softer RGB palette, inner box padding, commit list spacing
+- *(ui)* Rounded borders, softer RGB palette, inner box padding
+
+### ⚙️ Miscellaneous Tasks
+
+- Update changelog for version 0.5.1 release and simplify blueprint configuration loading
+- Remove unused dependencies and trim tokio features
+- *(script)* Update version management script for Rust project
+
 ## [0.5.1] - 2025-06-27
 
 ### 🐛 Bug Fixes
