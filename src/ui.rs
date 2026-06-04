@@ -282,35 +282,37 @@ pub fn render_commits(
         .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
         .split(commit_area);
 
-    // Tabs for commit list. The overview entry sits right-aligned in the same
-    // box as a top-level view switch ([0]); it is dimmed until one exists.
+    // Tabs for commit list. "Overviews [0]" is a top-level view switch shown
+    // right-aligned on the same tab line, in the same plain tab style; it is
+    // dimmed until an overview exists.
     let overview_count = overview_state.lock_safe().items.len();
-    let overview_title = if overview_count > 0 {
-        Line::from(vec![
-            Span::styled(format!(" \u{1F4C4} {} Overviews ", overview_count), Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            Span::styled("[0] ", Style::default().fg(bg_cyan).add_modifier(Modifier::BOLD)),
-        ]).right_aligned()
-    } else {
-        Line::from(Span::styled(
-            " \u{1F4C4} 0 Overviews [0] ",
-            Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM),
-        )).right_aligned()
-    };
     // let tab_titles = ["Timeframe [2]", "Selection [3]", "Stats [4]"];
     let tab_titles = ["Timeframe [2]", "Selection [3]"];
     let tabs = ratatui::widgets::Tabs::new(tab_titles)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Select View")
-                .title_top(overview_title),
-        )
+        .block(Block::default().borders(Borders::ALL).title("Select View"))
         .style(Style::default().fg(bg_fg))
         .highlight_style(Style::default().fg(bg_yellow).bold().underlined())
         .select(selected_tab.as_index())
         .divider(symbols::DOT)
         .padding(" ", " ");
     f.render_widget(tabs, layout.tabs);
+    // Render the overview switch on the tab content line (inside the borders),
+    // right-aligned, matching the unselected-tab style.
+    let overview_style = if overview_count > 0 {
+        Style::default().fg(bg_fg)
+    } else {
+        Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)
+    };
+    let overview_inner = Rect {
+        x: layout.tabs.x + 1,
+        y: layout.tabs.y + 1,
+        width: layout.tabs.width.saturating_sub(3),
+        height: 1,
+    };
+    f.render_widget(
+        Paragraph::new(Line::from(Span::styled("Overviews [0]", overview_style)).right_aligned()),
+        overview_inner,
+    );
 
     let list_area = Rect {
         x: commit_area.x,
