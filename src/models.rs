@@ -1,5 +1,21 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
+
+/// Poison-tolerant locking for shared UI state.
+///
+/// A panic in one of the async summary tasks must not take down the whole TUI
+/// on the next `lock()`. Recovering the inner guard is safe here because the
+/// protected state is plain UI data with no cross-field invariants to uphold.
+pub trait LockExt<T> {
+    fn lock_safe(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> LockExt<T> for Mutex<T> {
+    fn lock_safe(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+}
 
 /// Which UI area is currently focused.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

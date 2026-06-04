@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 use crate::models::{FocusArea, PopupQuote};
 use crate::git::get_commit_details;
 use crate::models::SelectedCommits;
+use crate::models::LockExt;
 use crate::CommitTab;
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -132,7 +133,7 @@ pub fn render_commits(
 
     // Hashes of marked commits, for the "*" indicator in the timeframe view.
     let selected_set: std::collections::BTreeSet<String> = selected_commits
-        .map(|arc| arc.lock().unwrap().set.keys().cloned().collect())
+        .map(|arc| arc.lock_safe().set.keys().cloned().collect())
         .unwrap_or_default();
     let area = f.area();
     let vertical_chunks = Layout::default()
@@ -140,7 +141,7 @@ pub fn render_commits(
         .constraints([Constraint::Min(1), Constraint::Length(3)]).split(area);
 
     // Determine if we should dim the background
-    let dim_bg = popup_quote.is_some_and(|arc| arc.lock().unwrap().visible);
+    let dim_bg = popup_quote.is_some_and(|arc| arc.lock_safe().visible);
     let bg_fg = if dim_bg { theme.blurred_border } else { theme.text };
     let bg_cyan = if dim_bg { theme.blurred_border } else { theme.focus_border };
     let bg_magenta = if dim_bg { theme.blurred_border } else { Color::Magenta }; // Not in theme yet
@@ -381,7 +382,7 @@ pub fn render_commits(
         },
         CommitTab::Selection => {
             if let Some(selected_commits) = selected_commits {
-                let sel = selected_commits.lock().unwrap();
+                let sel = selected_commits.lock_safe();
                 if sel.set.is_empty() {
                     let placeholder = Paragraph::new("No commits selected. Press 'm' to add commits to your selection.")
                         .block(Block::default().title("Selected Commits").borders(Borders::ALL))
@@ -537,7 +538,7 @@ pub fn render_commits(
 
     // popup
     if let Some(arc) = popup_quote {
-        let popup = arc.lock().unwrap();
+        let popup = arc.lock_safe();
         if popup.visible {
             // Dim the background
             let area = f.area();
@@ -646,7 +647,7 @@ pub fn render_commits(
     }
 
     if let Some(selected_commits) = selected_commits {
-        let sel = selected_commits.lock().unwrap();
+        let sel = selected_commits.lock_safe();
         if sel.popup_visible {
             let popup_area = centered_rect(60, 40, f.area());
             f.render_widget(Clear, popup_area);

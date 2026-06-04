@@ -8,6 +8,7 @@ use crate::git::reload_commits;
 use crate::utils::{get_active_commits, CommitData};
 use anyhow::Result;
 use crate::models::SelectedCommits;
+use crate::models::LockExt;
 
 pub fn handle_key(
     key: KeyCode,
@@ -69,7 +70,7 @@ pub fn handle_key(
         KeyCode::Char('m') => {
             // Toggle selection of current commit. Store the repo and full line so
             // the mark survives later timeframe changes.
-            let mut sel = selected_commits.lock().unwrap();
+            let mut sel = selected_commits.lock_safe();
             if let Some(idx) = *selected_commit_index {
                 let found = if *selected_repo_index == usize::MAX {
                     // global index across all repos
@@ -98,7 +99,7 @@ pub fn handle_key(
         },
         KeyCode::Char('s') => {
             // Toggle the popup listing all marked commits.
-            let mut sel = selected_commits.lock().unwrap();
+            let mut sel = selected_commits.lock_safe();
             sel.popup_visible = !sel.popup_visible;
         },
         KeyCode::Tab => {
@@ -163,7 +164,7 @@ pub fn handle_key(
         }
         KeyCode::Up | KeyCode::Char('k') => {
             // Popup scroll up
-            let mut popup = popup_quote.lock().unwrap();
+            let mut popup = popup_quote.lock_safe();
             if popup.visible && popup.scroll > 0 {
                 popup.scroll -= 1;
                 return Ok(true); // Prevent background navigation
@@ -201,7 +202,7 @@ pub fn handle_key(
         }
         KeyCode::Down | KeyCode::Char('j') => {
             // Popup scroll down
-            let mut popup = popup_quote.lock().unwrap();
+            let mut popup = popup_quote.lock_safe();
             if popup.visible {
                 let text_lines = popup.text.lines().count() as u16;
                 // Estimate popup height (centered_rect(60,80,area)), minus title/footer
@@ -316,7 +317,7 @@ pub fn handle_key(
                 crate::CommitTab::Selection => {
                     // Build from the stored selection (deterministic by hash) so
                     // it covers marks made under other timeframes too.
-                    let sel = selected_commits.lock().unwrap();
+                    let sel = selected_commits.lock_safe();
                     let commit_str = sel.set.values()
                         .map(|(_repo, line)| line.clone())
                         .collect::<Vec<_>>()
@@ -343,7 +344,7 @@ pub fn handle_key(
                 None => crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str),
             };
             {
-                let mut p = popup_quote.lock().unwrap();
+                let mut p = popup_quote.lock_safe();
                 p.visible = true;
                 p.loading = true;
                 p.spinner_frame = 0;
@@ -376,7 +377,7 @@ pub fn handle_key(
                     "Gemini API key not found.\n\nPlease add it to your configuration file at:\n{}\n\nOr set it as an environment variable: export GEMINI_API_KEY=your-key",
                     config_path.display()
                 );
-                popup_quote.lock().unwrap().text = error_message;
+                popup_quote.lock_safe().text = error_message;
                 return Ok(true);
             }
             let p2 = popup_quote.clone();
@@ -392,7 +393,7 @@ pub fn handle_key(
                 loop {
                     tokio::select! {
                         _ = interval.tick() => {
-                            let mut p = popup_clone.lock().unwrap();
+                            let mut p = popup_clone.lock_safe();
                             if !p.loading { break; }
                             p.spinner_frame = p.spinner_frame.wrapping_add(1);
                         }
@@ -401,7 +402,7 @@ pub fn handle_key(
                                 Ok(s) => s,
                                 Err(e) => format!("Gemini error: {}", e),
                             };
-                            let mut p = popup_clone.lock().unwrap();
+                            let mut p = popup_clone.lock_safe();
                             p.text = summary;
                             p.loading = false;
                             break;
@@ -412,7 +413,7 @@ pub fn handle_key(
         }
         KeyCode::Char('c') => {
             // Kopieren, wenn Popup sichtbar
-            let popup = popup_quote.lock().unwrap();
+            let popup = popup_quote.lock_safe();
             if popup.visible && !popup.loading {
                 let mut clipboard = Clipboard::new().ok();
                 if let Some(cb) = clipboard.as_mut() {
@@ -421,8 +422,8 @@ pub fn handle_key(
             }
         }
         KeyCode::Esc => { 
-            let mut p = popup_quote.lock().unwrap(); p.visible=false; p.scroll=0; 
-            let mut sel = selected_commits.lock().unwrap(); sel.popup_visible = false;
+            let mut p = popup_quote.lock_safe(); p.visible=false; p.scroll=0; 
+            let mut sel = selected_commits.lock_safe(); sel.popup_visible = false;
         }
         KeyCode::Char('d') => {
             *detailed_commit_view = !*detailed_commit_view;
@@ -449,7 +450,7 @@ pub fn handle_mouse(
         let y = mouse_event.row;
         // Check for popup summary X button
         {
-            let popup = popup_quote.lock().unwrap();
+            let popup = popup_quote.lock_safe();
             if popup.visible {
                 // Popup area is centered_rect(60,80,area)
                 // Get area from main window size
@@ -462,7 +463,7 @@ pub fn handle_mouse(
                 if y == x_button_y && x >= x_button_x && x < x_button_x + 3 {
                     // Clicked X
                     drop(popup); // unlock
-                    let mut popup = popup_quote.lock().unwrap();
+                    let mut popup = popup_quote.lock_safe();
                     popup.visible = false;
                     return;
                 }
