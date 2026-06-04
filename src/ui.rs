@@ -175,35 +175,33 @@ pub fn render_commits(
         ])
         .split(sidebar_area);
 
-    // Sidebar list (only repos with commits in the current timeframe)
+    // Sidebar list (only repos with commits in the current timeframe). One line
+    // per entry: "All" (item 0), a divider (item 1), then one repo per item.
+    // The mouse hit-test in input.rs mirrors this layout, so keep them in sync.
     let filtered_repos: Vec<&PathBuf> = data.iter().map(|(repo,_)| repo).collect();
     let mut repo_list = Vec::new();
-    // Calculate total commit count for all projects
     let total_commits: usize = data.iter().map(|(_, c)| c.len()).sum();
     // 'All' entry
     let all_selected = selected_repo_index == usize::MAX;
     let all_style = if all_selected {
         Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED)
     } else {
-        Style::default().fg(bg_fg)
+        Style::default().fg(bg_fg).add_modifier(Modifier::BOLD)
     };
-    repo_list.push(ListItem::new(vec![
-        Line::from(vec![Span::styled(
-            format!("\u{1F30D}  All Projects ({} total)", filtered_repos.len()), // 🌍
-            all_style
-        )]),
-        Line::from(vec![Span::styled(
-            format!("  {} commit{} in {}", total_commits, if total_commits == 1 { "" } else { "s" }, display_interval),
-            Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC)
-        )]),
-        Line::from(vec![Span::raw("")]),
-    ]));
-    // Visual divider
-    repo_list.push(ListItem::new(Line::from(vec![Span::styled("━━━━━━━━━━━━━━━━━━━━", Style::default().fg(theme.blurred_border))])));
+    repo_list.push(ListItem::new(Line::from(vec![
+        Span::styled("\u{1F30D} All Projects", all_style), // 🌍
+        Span::styled(format!("  {}", total_commits), Style::default().fg(theme.text_secondary)),
+    ])));
+    // Visual divider, scaled to the sidebar width.
+    let divider_width = sidebar_area.width.saturating_sub(2).max(1) as usize;
+    repo_list.push(ListItem::new(Line::from(vec![Span::styled(
+        "─".repeat(divider_width),
+        Style::default().fg(theme.blurred_border),
+    )])));
     // Per-repo entries (only those with commits)
     if filtered_repos.is_empty() {
         repo_list.push(ListItem::new(Line::from(vec![Span::styled(
-            "No projects found. Try another timeframe with <Tab>",
+            "No projects. Try <Tab>",
             Style::default().fg(Color::Red).add_modifier(Modifier::BOLD)
         )])));
     } else {
@@ -216,37 +214,30 @@ pub fn render_commits(
                 repo.to_string_lossy()
             };
             let selected = selected_repo_index == i;
-            let style = if selected {
-                Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED)
-            } else {
-                theme.repo_path
-            };
             let count = data.iter().find(|(r,_)| r == *repo).map(|(_,c)| c.len()).unwrap_or(0);
-            let count_style = if count > 0 {
-                theme.repo_commit_count
+            let (name_style, count_style) = if selected {
+                let s = Style::default().fg(bg_yellow).add_modifier(Modifier::BOLD | Modifier::REVERSED);
+                (s, s)
+            } else if count > 0 {
+                (theme.repo_path, theme.repo_commit_count)
             } else {
-                Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)
+                let dim = Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM);
+                (dim, dim)
             };
-            repo_list.push(ListItem::new(vec![
-                Line::from(vec![Span::styled(
-                    format!("\u{1F5C3}  {}", name), // 🗃️ (smaller folder icon)
-                    style
-                )]),
-                Line::from(vec![Span::styled(
-                    format!("   {} commit{}", count, if count == 1 { "" } else { "s" }),
-                    count_style
-                )]),
-                Line::from(vec![Span::raw("")]),
-            ]));
+            repo_list.push(ListItem::new(Line::from(vec![
+                Span::styled(format!("\u{1F5C3} {}", name), name_style), // 🗃️
+                Span::styled(format!("  {}", count), count_style),
+            ])));
         }
     }
     let sidebar = List::new(repo_list)
-        .highlight_symbol("▶ ")
-        .style(Style::default().fg(bg_fg)); // removed .bg(Color::Rgb(30,34,40))
+        .style(Style::default().fg(bg_fg));
     let mut sidebar_state = ListState::default();
-    sidebar_state.select(Some(if selected_repo_index==usize::MAX {0} else {selected_repo_index*3+2}));
+    // "All" is item 0, the divider item 1, so repo i is item i + 2. Selecting
+    // the right item also lets the List auto-scroll to keep it visible.
+    sidebar_state.select(Some(if selected_repo_index == usize::MAX { 0 } else { selected_repo_index + 2 }));
     let sidebar_block = Block::default().title("Repositories [1]").borders(Borders::ALL)
-        .style(Style::default().fg(bg_cyan)); // removed .bg(Color::Rgb(30,34,40))
+        .style(Style::default().fg(bg_cyan));
     f.render_stateful_widget(sidebar.block(sidebar_block), sidebar_chunks[0], &mut sidebar_state);
 
     // Commit list layout with scrollbar
@@ -446,32 +437,20 @@ pub fn render_commits(
                 // the detailed-list toggle.
                 let hash = commit_hash(&commit_line);
                 let details = get_commit_details(&repo_path, hash).unwrap_or_else(|e| e.to_string());
-                // clear detail region
+                // Clear the region and draw the border; the block's inner area
+                // is the padded text region (no manual space-blanking needed).
                 f.render_widget(Clear, detail_chunk);
-                // draw border around detail
                 let detail_block = Block::default()
                     .title("Details")
                     .borders(Borders::ALL)
                     .style(Style::default().fg(bg_magenta));
+                let inner = detail_block.inner(detail_chunk);
                 f.render_widget(detail_block, detail_chunk);
-                // define padded inner area
-                let padded = Rect {
-                    x: detail_chunk.x + 1,
-                    y: detail_chunk.y + 1,
-                    width: detail_chunk.width.saturating_sub(2),
-                    height: detail_chunk.height.saturating_sub(2),
-                };
-                // clear inner region too
-                f.render_widget(Clear, padded);
-                // fill padded area with spaces to erase any leftover text
-                let blank_lines = vec![" ".repeat(padded.width as usize); padded.height as usize].join("\n");
-                let blank_para = Paragraph::new(blank_lines.clone());
-                f.render_widget(blank_para, padded);
                 // split into text + scrollbar
                 let detail_chunks = Layout::default()
                     .direction(Direction::Horizontal)
                     .constraints([Constraint::Min(1), Constraint::Length(1)].as_ref())
-                    .split(padded);
+                    .split(inner);
                 // render detail text
                 let para = Paragraph::new(details.clone())
                     .wrap(Wrap { trim: false })
@@ -492,15 +471,29 @@ pub fn render_commits(
         }
     } 
 
-    // footer
-    let filter_label = if filter_by_user {"u: Only mine"} else {"u: All"};
-    let detail_label = if detailed_commit_view {"d: Details ON"} else {"d: Details OFF"};
-    let footer = Paragraph::new(format!(
-        "Tab/Shift+Tab Timeframe | ↑/↓ or h/j/k/l Navigation | <Space> Details | m Mark | s Selection | a AI summary | {} | {} | q Quit",
-        filter_label, detail_label
-    ))
-    .block(Block::default().borders(Borders::ALL))
-    .style(if dim_bg { theme.footer.fg(theme.blurred_border) } else { theme.footer });
+    // footer — only the keys relevant to the current context, so the line
+    // stays short enough to not get truncated.
+    let filter_label = if filter_by_user { "u: only mine" } else { "u: all" };
+    let detail_label = if detailed_commit_view { "d: details on" } else { "d: details off" };
+    let footer_text = if dim_bg {
+        // A summary popup is open; it carries its own action hints.
+        "Esc close summary".to_string()
+    } else {
+        match focus {
+            FocusArea::Sidebar => format!(
+                "↑/↓ repo | l/→ commits | Tab timeframe | a summary | {filter_label} | q quit"
+            ),
+            FocusArea::CommitList => format!(
+                "↑/↓ commit | Space details | m mark | s selection | a summary | {detail_label} | {filter_label} | q quit"
+            ),
+            FocusArea::Detail => {
+                "↑/↓ scroll | h/← back | Space close | a summary | q quit".to_string()
+            }
+        }
+    };
+    let footer = Paragraph::new(footer_text)
+        .block(Block::default().borders(Borders::ALL))
+        .style(if dim_bg { theme.footer.fg(theme.blurred_border) } else { theme.footer });
     f.render_widget(footer, layout.footer);
 
     // popup
@@ -639,15 +632,18 @@ pub fn compute_layout(area: Rect, show_details: bool, has_selection: bool) -> Ap
         .direction(Direction::Vertical)
         .constraints([Constraint::Min(1), Constraint::Length(3)])
         .split(area);
+    // Responsive sidebar: ~1/4 of the width, clamped so it stays readable on
+    // narrow terminals and doesn't waste space on wide ones.
+    let sidebar_w = (area.width / 4).clamp(22, 36);
     let columns = if show_details && has_selection {
         Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(30), Constraint::Percentage(60), Constraint::Percentage(40)])
+            .constraints([Constraint::Length(sidebar_w), Constraint::Percentage(60), Constraint::Percentage(40)])
             .split(vertical[0])
     } else {
         Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Length(30), Constraint::Min(1)])
+            .constraints([Constraint::Length(sidebar_w), Constraint::Min(1)])
             .split(vertical[0])
     };
     let sidebar = columns[0];

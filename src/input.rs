@@ -484,14 +484,14 @@ pub fn handle_mouse(
         }
         // Sidebar area: x < sidebar_area.x + sidebar_area.width
         if x >= sidebar_area.x && x < sidebar_area.x + sidebar_area.width && y >= sidebar_area.y && y < sidebar_area.y + sidebar_area.height {
-            // Sidebar layout (inside the top border): rows 0-2 = "All Projects",
-            // row 3 = divider, then each repo occupies 3 rows (name, count, blank).
-            // Mirrors the rendering in ui.rs; assumes the list top is visible.
+            // Sidebar layout (inside the top border): row 0 = "All Projects",
+            // row 1 = divider, then one row per repo. Mirrors the rendering in
+            // ui.rs; assumes the list top is visible.
             let content_y = (y as usize).saturating_sub(sidebar_area.y as usize + 1);
-            if content_y < 3 {
+            if content_y == 0 {
                 *selected_repo_index = usize::MAX;
-            } else if content_y >= 4 {
-                let repo_idx = (content_y - 4) / 3;
+            } else if content_y >= 2 {
+                let repo_idx = content_y - 2;
                 if repo_idx < commits.len() {
                     *selected_repo_index = repo_idx;
                     // Clicking a repo name switches to the timeframe tab (focus unchanged).
