@@ -67,31 +67,31 @@ pub fn handle_key(
             }
         },
         KeyCode::Char('m') => {
-            // Toggle selection of current commit
+            // Toggle selection of current commit. Store the repo and full line so
+            // the mark survives later timeframe changes.
             let mut sel = selected_commits.lock().unwrap();
             if let Some(idx) = *selected_commit_index {
-                let commit_str = if *selected_repo_index == usize::MAX {
-                    // global index
+                let found = if *selected_repo_index == usize::MAX {
+                    // global index across all repos
                     let mut offset = 0;
-                    let mut found = None;
-                    for (_repo, repo_commits) in commits.iter() {
+                    let mut hit = None;
+                    for (repo, repo_commits) in commits.iter() {
                         if idx < offset + repo_commits.len() {
-                            found = repo_commits.get(idx - offset).cloned();
+                            hit = repo_commits.get(idx - offset).map(|c| (repo.clone(), c.clone()));
                             break;
                         }
                         offset += repo_commits.len();
                     }
-                    found
+                    hit
                 } else {
                     commits.get(*selected_repo_index)
-                        .and_then(|(_repo, repo_commits)| repo_commits.get(idx).cloned())
+                        .and_then(|(repo, repo_commits)| repo_commits.get(idx).map(|c| (repo.clone(), c.clone())))
                 };
-                if let Some(commit) = commit_str {
+                if let Some((repo, commit)) = found {
                     let hash = commit.split_whitespace().next().unwrap_or("").to_string();
-                    if sel.set.contains(&hash) {
-                        sel.set.remove(&hash);
-                    } else {
-                        sel.set.insert(hash);
+                    // Toggle: remove if already marked, otherwise insert.
+                    if sel.set.remove(&hash).is_none() {
+                        sel.set.insert(hash, (repo, commit));
                     }
                 }
             }
@@ -314,13 +314,11 @@ pub fn handle_key(
                     }
                 }
                 crate::CommitTab::Selection => {
-                    // Iterate commits in repo/commit order (not HashSet order) so
-                    // the prompt is deterministic across runs.
+                    // Build from the stored selection (deterministic by hash) so
+                    // it covers marks made under other timeframes too.
                     let sel = selected_commits.lock().unwrap();
-                    let commit_str = commits.iter()
-                        .flat_map(|(_repo, repo_commits)| repo_commits.iter())
-                        .filter(|commit| commit.split_whitespace().next().is_some_and(|h| sel.set.contains(h)))
-                        .cloned()
+                    let commit_str = sel.set.values()
+                        .map(|(_repo, line)| line.clone())
                         .collect::<Vec<_>>()
                         .join("\n");
                     ("Selection".to_string(), commit_str)

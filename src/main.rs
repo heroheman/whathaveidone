@@ -19,7 +19,7 @@ use git::{find_git_repos, reload_commits};
 use ui::render_commits;
 use crate::input::{handle_key, handle_mouse};
 use crate::models::SelectedCommits;
-use std::collections::HashSet;
+use std::collections::BTreeMap;
 use utils::CommitData;
 use crate::config::Settings;
 use std::io::{self, Write};
@@ -145,7 +145,7 @@ fn main() -> anyhow::Result<()> {
     let mut detail_scroll = 0;
 
     let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false, scroll: 0, spinner_frame: 0 }));
-    let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: HashSet::new(), popup_visible: false }));
+    let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: BTreeMap::new(), popup_visible: false }));
 
     let rt = Runtime::new()?;
     terminal::enable_raw_mode()?;

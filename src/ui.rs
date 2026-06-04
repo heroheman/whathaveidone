@@ -130,7 +130,10 @@ pub fn render_commits(
 
     f.render_widget(Block::default().style(Style::default().bg(theme.root_bg)), f.area());
 
-    let selected_set = selected_commits.map(|arc| arc.lock().unwrap().set.clone()).unwrap_or_default();
+    // Hashes of marked commits, for the "*" indicator in the timeframe view.
+    let selected_set: std::collections::BTreeSet<String> = selected_commits
+        .map(|arc| arc.lock().unwrap().set.keys().cloned().collect())
+        .unwrap_or_default();
     let area = f.area();
     let vertical_chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -386,28 +389,20 @@ pub fn render_commits(
                         .style(Style::default().fg(bg_fg));
                     f.render_widget(placeholder, list_area);
                 } else {
-                    // Map: repo_path -> Vec<commit>
+                    // Build from the stored selection so marks made under other
+                    // timeframes still appear; group by repo, ordered by hash.
                     let mut repo_to_commits: std::collections::BTreeMap<&PathBuf, Vec<&String>> = std::collections::BTreeMap::new();
-                    let mut hash_to_repo: std::collections::HashMap<&str, &PathBuf> = std::collections::HashMap::new();
-                    for (repo, commits) in data {
-                        for commit in commits {
-                            if let Some(hash) = commit.split_whitespace().next() {
-                                hash_to_repo.insert(hash, repo);
-                                if sel.set.contains(hash) {
-                                    repo_to_commits.entry(repo).or_default().push(commit);
-                                }
-                            }
-                        }
+                    for (repo, line) in sel.set.values() {
+                        repo_to_commits.entry(repo).or_default().push(line);
                     }
                     let mut items = Vec::new();
                     for (repo, commits) in repo_to_commits.iter() {
                         items.push(ListItem::new(Line::from(vec![Span::styled(
-                            format!("\u{1F5C3}  {}", repo.file_name().unwrap().to_string_lossy()),
+                            format!("\u{1F5C3}  {}", repo.file_name().unwrap_or_default().to_string_lossy()),
                             theme.repo_commit_count
                         )])));
                         for commit in commits.iter() {
-                            let star = if let Some(hash) = commit.split_whitespace().next() { if sel.set.contains(hash) {"*"} else {" "} } else {" "};
-                            let indicator = format!("{}  ", star);
+                            let indicator = "*  ".to_string();
                             let style = Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD);
                             let line = render_commit_line(commit, indicator, filter_by_user, detailed_commit_view, theme);
                             items.push(ListItem::new(line).style(style));
@@ -659,16 +654,10 @@ pub fn render_commits(
             let mut lines = vec![Line::from(vec![
                 Span::styled("\u{1F4CB}  Selected Commits", Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
             ])];
-            // List marked commits in repo/commit order (not HashSet order) so
-            // the popup is stable across renders.
-            for (_repo, commits) in data {
-                for commit in commits {
-                    if let Some(hash) = commit.split_whitespace().next() {
-                        if sel.set.contains(hash) {
-                            lines.push(Line::from(commit.clone()));
-                        }
-                    }
-                }
+            // List marked commits from the stored selection (deterministic by
+            // hash), independent of the current timeframe.
+            for (_repo, line) in sel.set.values() {
+                lines.push(Line::from(line.clone()));
             }
             let para = Paragraph::new(lines)
                 .block(Block::default()
