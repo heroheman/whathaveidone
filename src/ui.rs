@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear},
+    widgets::{Block, Borders, Padding, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap, ListState, Clear},
     layout::{Constraint, Direction, Layout},
     style::{Color, Modifier, Style},
     text::{Span, Line},
@@ -100,9 +100,10 @@ fn render_commit_line<'a>(commit: &'a str, indicator: String, filter_by_user: bo
 }
 
 /// Builds the list rows for one commit: the highlighted summary line, plus a
-/// short preview of the first body lines in detailed mode. Returned as the
-/// lines of a single multi-line `ListItem` so the selection index stays aligned
-/// (one item per commit). Full details remain available via the Space pane.
+/// short preview of the first body lines in detailed mode, and a trailing blank
+/// spacer line for breathing room between commits. Returned as the lines of a
+/// single multi-line `ListItem` so the selection index stays aligned (one item
+/// per commit). Full details remain available via the Space pane.
 fn commit_item_lines<'a>(commit: &'a str, indicator: String, filter_by_user: bool, detailed: bool, theme: &Theme) -> Vec<Line<'a>> {
     let mut lines = vec![render_commit_line(commit, indicator, filter_by_user, detailed, theme)];
     if detailed {
@@ -113,6 +114,8 @@ fn commit_item_lines<'a>(commit: &'a str, indicator: String, filter_by_user: boo
             ]));
         }
     }
+    // Spacer between commits so the list doesn't feel cramped.
+    lines.push(Line::raw(""));
     lines
 }
 
@@ -165,7 +168,7 @@ pub fn render_commits(
         .map(|arc| arc.lock_safe().set.keys().cloned().collect())
         .unwrap_or_default();
     let bg_fg = theme.text;
-    let bg_magenta = Color::Magenta; // Not in theme yet
+    let bg_magenta = theme.detail_border;
     let bg_yellow = theme.text_highlight;
 
     // Single source of truth for the screen regions (shared with main.rs).
@@ -405,7 +408,7 @@ pub fn render_commits(
                             if Some(c) == selected_commit_index { selected_item = Some(items.len()); }
                             let style = Style::default().fg(theme.selection_fg).add_modifier(Modifier::BOLD);
                             let line = render_commit_line(commit, "*".to_string(), filter_by_user, detailed_commit_view, theme);
-                            items.push(ListItem::new(line).style(style));
+                            items.push(ListItem::new(vec![line, Line::raw("")]).style(style));
                             c += 1;
                         }
                     }
@@ -484,6 +487,7 @@ pub fn render_commits(
                 let detail_block = Block::default()
                     .title("Details")
                     .borders(Borders::ALL)
+                    .padding(Padding::horizontal(1))
                     .style(Style::default().fg(bg_magenta));
                 let inner = detail_block.inner(detail_chunk);
                 f.render_widget(detail_block, detail_chunk);
@@ -637,12 +641,12 @@ fn render_overview(
         list_state.select(Some(selected));
     }
     let list = List::new(items)
-        .block(Block::default().title("Overviews").borders(Borders::ALL).style(border(list_focused)))
+        .block(Block::default().title("Overviews").borders(Borders::ALL).padding(Padding::horizontal(1)).style(border(list_focused)))
         .highlight_style(Style::default().bg(theme.selection_bg).fg(theme.selection_fg).add_modifier(Modifier::BOLD));
     f.render_stateful_widget(list, list_area, &mut list_state);
 
     // --- Right: detail pane ---
-    let detail_block = Block::default().title("Detail").borders(Borders::ALL).style(border(detail_focused));
+    let detail_block = Block::default().title("Detail").borders(Borders::ALL).padding(Padding::horizontal(1)).style(border(detail_focused));
     let inner = detail_block.inner(detail_area);
     f.render_widget(detail_block, detail_area);
 
@@ -828,6 +832,7 @@ fn focus_block(title: &str, focused: bool, theme: &Theme) -> Block<'static> {
     };
     Block::default()
         .borders(Borders::ALL)
+        .padding(Padding::horizontal(1))
         .title(format!("{marker}{title}"))
         .border_style(border_style)
 }
