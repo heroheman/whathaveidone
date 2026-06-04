@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.1] - 2026-06-04
+
+### 📚 Documentation
+
+- Add app screenshots to readme
+- Document the Stats view (key 3) in the readme
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.6.0
+
 ## [0.6.0] - 2026-06-04
 
 ### 🚀 Features
