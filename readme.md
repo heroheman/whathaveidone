@@ -16,7 +16,7 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 - Summarizes Git commit history for one or more projects
 - Groups changes by day and topic
 - Supports multiple repositories
-- Two views with a consistent keymap: a **Commits** view (`1`) and a persistent **Overviews** view (`2`)
+- Three views with a consistent keymap: a **Commits** view (`1`), a persistent **Overviews** view (`2`), and a full-screen **Stats** dashboard (`3`)
 - AI overviews are saved to disk and survive restarts — browse, copy, regenerate, or delete past summaries in a master/detail layout
 - Customizable summary prompt
 - Copy summary to clipboard with one keypress
@@ -116,10 +116,11 @@ whid
 
 ### Views & navigation
 
-The app has two top-level views and one consistent key model that separates *which view* you're in from *which pane* has focus:
+The app has three top-level views and one consistent key model that separates *which view* you're in from *which pane* has focus:
 
 - **Commits** (`1`) — the sidebar of repositories plus the commit list. Switch the list between **Timeframe** and **Selection** mode with `s`.
 - **Overviews** (`2`) — a master/detail browser of past AI summaries (dimmed until you generate one). The left list holds every saved overview with its creation metadata; the right pane shows the full text.
+- **Stats** (`3`) — a full-screen dashboard summarizing the commits in the current timeframe: commits per day, by weekday and by hour, your busiest day, and a per-repository and per-author breakdown. Press `u` to toggle mine / all authors and `d` for a detailed breakdown.
 
 Everywhere: `Tab` / `Shift+Tab` move focus between panes, arrows or `h j k l` navigate and scroll within the focused pane, `?` toggles a help overlay listing every key, and `q` quits.
 
@@ -223,7 +224,7 @@ You can toggle a detailed, multi-line commit log view (similar to `git log --for
 Press `?` at any time for an in-app overlay of all keys.
 
 ### Global
-- `1` / `2`: Switch view (Commits / Overviews)
+- `1` / `2` / `3`: Switch view (Commits / Overviews / Stats)
 - `Tab` / `Shift+Tab`: Move focus between panes
 - `←` `→` / `h` `l`: Move focus left / right
 - `↑` `↓` / `j` `k`: Navigate / scroll in the focused pane
@@ -245,6 +246,14 @@ Press `?` at any time for an in-app overlay of all keys.
 - `x` / `Del`: Delete the selected overview (asks `y`/`n` to confirm)
 - `a`: Generate a new overview
 - `Esc`: Back to Commits (cancels an in-flight generation)
+
+### Stats view
+The dashboard is read-only — only the timeframe and author/detail filters are live; they reload the commits and the charts recompute.
+- `[` / `]`: Previous / next timeframe
+- `w`: Jump to the week timeframe
+- `u`: Toggle mine / all authors
+- `d`: Toggle the detailed breakdown
+- `1` / `2`: Back to Commits / Overviews
 
 ---
 
