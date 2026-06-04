@@ -8,7 +8,7 @@ use ratatui::{
 };
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use crate::models::{FocusArea, PopupQuote};
+use crate::models::{FocusArea, OverviewState, OverviewFocus};
 use crate::git::get_commit_details;
 use crate::utils::commit_hash;
 use crate::models::SelectedCommits;
@@ -117,6 +117,7 @@ fn commit_item_lines<'a>(commit: &'a str, indicator: String, filter_by_user: boo
 }
 
 /// Renders the commits view.
+#[allow(clippy::too_many_arguments)]
 pub fn render_commits(
     f: &mut Frame,
     theme: &Theme,
@@ -133,10 +134,14 @@ pub fn render_commits(
     _commitlist_scroll: usize,
     detail_scroll: u16,
     filter_by_user: bool,
-    popup_quote: Option<&Arc<Mutex<PopupQuote>>>,
+    overview_state: &Arc<Mutex<OverviewState>>,
     selected_commits: Option<&Arc<Mutex<SelectedCommits>>>,
     selected_tab: CommitTab,
     detailed_commit_view: bool,
+    show_overview: bool,
+    overview_selected: usize,
+    overview_focus: OverviewFocus,
+    overview_detail_scroll: u16,
 ) {
     let display_interval = if let (Some(from), to) = (from_date, to_date) {
         let to_str = to.as_deref().unwrap_or("today");
@@ -147,18 +152,20 @@ pub fn render_commits(
 
     f.render_widget(Block::default().style(Style::default().bg(theme.root_bg)), f.area());
 
+    // The overview view fully owns the screen when active.
+    if show_overview {
+        render_overview(f, theme, overview_state, overview_selected, overview_focus, overview_detail_scroll);
+        return;
+    }
+
     // Hashes of marked commits, for the "*" indicator in the timeframe view.
     let selected_set: std::collections::BTreeSet<String> = selected_commits
         .map(|arc| arc.lock_safe().set.keys().cloned().collect())
         .unwrap_or_default();
-    // Determine if we should dim the background
-    let dim_bg = popup_quote.is_some_and(|arc| arc.lock_safe().visible);
-    let bg_fg = if dim_bg { theme.blurred_border } else { theme.text };
-    let bg_cyan = if dim_bg { theme.blurred_border } else { theme.focus_border };
-    let bg_magenta = if dim_bg { theme.blurred_border } else { Color::Magenta }; // Not in theme yet
-    // let bg_green = if dim_bg { theme.blurred_border } else { Color::Green }; // Not in theme yet
-    let bg_yellow = if dim_bg { theme.blurred_border } else { theme.text_highlight };
-    let _bg_red = if dim_bg { theme.blurred_border } else { Color::Red }; // Not in theme yet
+    let bg_fg = theme.text;
+    let bg_cyan = theme.focus_border;
+    let bg_magenta = Color::Magenta; // Not in theme yet
+    let bg_yellow = theme.text_highlight;
 
     // Single source of truth for the screen regions (shared with main.rs).
     let layout = compute_layout(f.area(), show_details, selected_commit_index.is_some());
@@ -476,13 +483,7 @@ pub fn render_commits(
     // the focused area. Stays on one line; chips sit first so they survive a
     // truncation on narrow terminals.
     let footer_block = Block::default().borders(Borders::ALL);
-    if dim_bg {
-        // A summary popup is open; it carries its own action hints.
-        let footer = Paragraph::new("Esc close summary")
-            .block(footer_block)
-            .style(theme.footer.fg(theme.blurred_border));
-        f.render_widget(footer, layout.footer);
-    } else {
+    {
         // A filled background reads as "on" / active; dim text reads as "off".
         let chip = |label: String, bg: Color| {
             Span::styled(format!(" {label} "), Style::default().fg(Color::Black).bg(bg).add_modifier(Modifier::BOLD))
@@ -500,6 +501,13 @@ pub fn render_commits(
         } else {
             Span::styled(" \u{25CB} details ", Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM)) // ○
         };
+        // The overview chip [0] is only active once an overview exists.
+        let overview_count = overview_state.lock_safe().items.len();
+        let overview_chip = if overview_count > 0 {
+            chip(format!("\u{1F4C4} {} overviews [0]", overview_count), Color::Cyan) // 📄
+        } else {
+            Span::styled(" \u{1F4C4} 0 overviews [0] ", Style::default().fg(theme.blurred_border).add_modifier(Modifier::DIM))
+        };
 
         let keys = match focus {
             FocusArea::Sidebar =>
@@ -516,130 +524,170 @@ pub fn render_commits(
             filter_chip,
             gap.clone(),
             detail_chip,
+            gap.clone(),
+            overview_chip,
             Span::styled("  \u{2502} ", Style::default().fg(theme.blurred_border)), // │
             Span::styled(keys, theme.footer),
         ]);
         let footer = Paragraph::new(line).block(footer_block);
         f.render_widget(footer, layout.footer);
     }
+}
 
-    // popup
-    if let Some(arc) = popup_quote {
-        let popup = arc.lock_safe();
-        if popup.visible {
-            // Dim the background
-            let area = f.area();
-            let dim_block = Block::default().style(Style::default().bg(theme.dim_bg).fg(Color::Reset));
-            f.render_widget(dim_block, area);
-            // Centered popup area
-            let popup_area = centered_rect(60, 80, f.area());
-            f.render_widget(Clear, popup_area);
+/// Renders the overview view: a left list of stored AI overviews (newest
+/// first), a right detail pane with a metadata header and the scrollable text,
+/// and a context footer. Fully keyboard-driven.
+fn render_overview(
+    f: &mut Frame,
+    theme: &Theme,
+    overview_state: &Arc<Mutex<OverviewState>>,
+    selected: usize,
+    overview_focus: OverviewFocus,
+    detail_scroll: u16,
+) {
+    let state = overview_state.lock_safe();
 
-            // Header: icon, project, interval
-            let project = if selected_repo_index == usize::MAX {
-                "All projects".to_string()
-            } else if let Some((repo, _)) = data.get(selected_repo_index) {
-                repo.file_name().unwrap_or_default().to_string_lossy().to_string()
-            } else {
-                "Project".to_string()
-            };
-            let title = format!("\u{1F916}  AI Summary for {}", project);
-            let interval = format!("Interval: {}", display_interval);
-            let x_button = Span::styled("[X]", Style::default().fg(Color::Red).add_modifier(Modifier::BOLD));
-            let mut title_line = vec![
-                Span::styled(&title, theme.popup_title),
-                Span::raw("  "),
-                Span::styled(&interval, Style::default().fg(theme.text_highlight)),
-            ];
-            // Pad to right edge
-            let popup_width = popup_area.width as usize;
-            let title_width = title.len() + interval.len() + 2;
-            let x_button_width = 3;
-            let pad = if popup_width > title_width + x_button_width + 2 { popup_width - title_width - x_button_width - 2 } else { 1 };
-            title_line.push(Span::raw(" ".repeat(pad)));
-            title_line.push(x_button);
+    // Top split: content area + footer (mirrors the commit view's footer row).
+    let vertical = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(3)])
+        .split(f.area());
+    let content = vertical[0];
+    let footer_area = vertical[1];
 
-            // Block for popup
-            let block = Block::default()
-                .borders(Borders::ALL)
-                .style(theme.popup_border)
-                .title(Line::from(title_line));
+    // Master/detail columns.
+    let list_w = (content.width / 3).clamp(28, 44);
+    let columns = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Length(list_w), Constraint::Min(1)])
+        .split(content);
+    let list_area = columns[0];
+    let detail_area = columns[1];
 
-            let scroll = popup.scroll;
-            let text_line_count = popup.text.lines().count() as u16;
+    let list_focused = overview_focus == OverviewFocus::List;
+    let detail_focused = overview_focus == OverviewFocus::Detail;
+    let border = |focused: bool| if focused {
+        Style::default().fg(theme.focus_border).add_modifier(Modifier::BOLD)
+    } else {
+        Style::default().fg(theme.focus_border)
+    };
 
-            // Loading spinner/animation
-            let spinner = if popup.loading {
-                let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-                let frame = frames[(popup.spinner_frame as usize) % frames.len()];
-                format!("{} ", frame)
-            } else {
-                String::new()
-            };
+    // Spinner frame for the optional "generating" row.
+    let spinner = {
+        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        frames[(state.spinner_frame as usize) % frames.len()]
+    };
 
-            // Content: always show popup.text (which includes variables if loading)
-            let padded_text = if popup.loading {
-                // Show spinner above the text
-                format!(
-                    "\n   {}Loading...\n\n{}\n",
-                    spinner,
-                    popup.text
-                        .lines()
-                        .map(|line| format!("  {}  ", line))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            } else {
-                format!(
-                    "\n{}\n",
-                    popup.text
-                        .lines()
-                        .map(|line| format!("  {}  ", line))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                )
-            };
-
-            let para = Paragraph::new(padded_text)
-                .block(block)
-                .wrap(Wrap { trim: true })
-                .alignment(Alignment::Left)
-                .scroll((scroll, 0))
-                .style(theme.popup_text);
-            f.render_widget(para, popup_area);
-
-            // Draw a vertical scrollbar inside the popup
-            let scrollbar_area = Rect {
-                x: popup_area.x + popup_area.width - 1,
-                y: popup_area.y + 1,
-                width: 1,
-                height: popup_area.height.saturating_sub(2),
-            };
-            let mut sb = ScrollbarState::default()
-                .position(scroll as usize)
-                .content_length(text_line_count as usize);
-            f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), scrollbar_area, &mut sb);
-
-            // Footer visually separated
-            let footer_area = Rect {
-                x: popup_area.x,
-                y: popup_area.y + popup_area.height,
-                width: popup_area.width,
-                height: 1,
-            };
-            let footer = if popup.loading {
-                Paragraph::new("Esc cancel")
-                    .style(Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC))
-            } else if popup.copied {
-                Paragraph::new("✓ Copied to clipboard")
-                    .style(Style::default().fg(theme.commit_author.fg.unwrap_or(Color::Green)).add_modifier(Modifier::BOLD))
-            } else {
-                Paragraph::new("Enter copy & close | c copy | r regenerate | ↑/↓ scroll | Esc close")
-                    .style(Style::default().fg(theme.text_secondary).add_modifier(Modifier::ITALIC))
-            };
-            f.render_widget(footer, footer_area);
-        }
+    // --- Left: list of overviews ---
+    let mut items: Vec<ListItem> = Vec::new();
+    if state.generating {
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(format!("{} generating…", spinner), Style::default().fg(theme.text_highlight).add_modifier(Modifier::BOLD)),
+        ])));
     }
+    for rec in state.items.iter() {
+        let line1 = Line::from(vec![
+            Span::styled(rec.project.clone(), Style::default().fg(theme.text).add_modifier(Modifier::BOLD)),
+        ]);
+        let line2 = Line::from(vec![
+            Span::styled(rec.created_at.clone(), theme.commit_datetime),
+            Span::raw("  "),
+            Span::styled(rec.interval.clone(), Style::default().fg(theme.text_secondary)),
+        ]);
+        items.push(ListItem::new(vec![line1, line2]));
+    }
+    if items.is_empty() {
+        items.push(ListItem::new(Line::from(vec![Span::styled(
+            "No overviews yet. Press 'a' in the commit view.",
+            Style::default().fg(theme.text_secondary),
+        )])));
+    }
+    // List selection accounts for an optional leading spinner row.
+    let mut list_state = ListState::default();
+    let sel_row = if state.generating { selected + 1 } else { selected };
+    if !state.items.is_empty() {
+        list_state.select(Some(sel_row));
+    }
+    let list = List::new(items)
+        .block(Block::default().title("Overviews [0]").borders(Borders::ALL).style(border(list_focused)))
+        .highlight_style(Style::default().bg(theme.selection_bg).fg(theme.selection_fg).add_modifier(Modifier::BOLD));
+    f.render_stateful_widget(list, list_area, &mut list_state);
+
+    // --- Right: detail pane ---
+    let detail_block = Block::default().title("Detail").borders(Borders::ALL).style(border(detail_focused));
+    let inner = detail_block.inner(detail_area);
+    f.render_widget(detail_block, detail_area);
+
+    let selected_rec = state.items.get(selected);
+    if let Some(rec) = selected_rec {
+        // Metadata header (fixed) above the scrollable text.
+        let header_lines = vec![
+            Line::from(vec![
+                Span::styled("\u{1F4C1} ", Style::default().fg(theme.text_highlight)),
+                Span::styled(rec.project.clone(), Style::default().fg(theme.text_highlight).add_modifier(Modifier::BOLD)),
+                Span::raw("   "),
+                Span::styled(format!("{} commits", rec.commit_count), Style::default().fg(theme.text_secondary)),
+            ]),
+            Line::from(vec![
+                Span::styled(format!("\u{1F551} {}", rec.created_at), theme.commit_datetime),
+                Span::raw("   "),
+                Span::styled(format!("\u{23F1} {}  ({} to {})", rec.interval, rec.from, rec.to), Style::default().fg(theme.text_secondary)),
+            ]),
+            Line::from(vec![
+                Span::styled(format!("\u{1F916} {} / {}", rec.provider, rec.model), Style::default().fg(theme.text_secondary)),
+                Span::raw("   "),
+                Span::styled(format!("\u{1F310} {}  \u{00B7} {}", rec.lang, rec.tab), Style::default().fg(theme.text_secondary)),
+            ]),
+            Line::from(vec![Span::styled(
+                "\u{2500}".repeat(inner.width.saturating_sub(1).max(1) as usize),
+                Style::default().fg(theme.blurred_border),
+            )]),
+        ];
+        let header_height = header_lines.len() as u16;
+        let rows = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(header_height), Constraint::Min(1)])
+            .split(inner);
+        f.render_widget(Paragraph::new(header_lines), rows[0]);
+
+        // Body: full overview text + scrollbar.
+        let body = Layout::default()
+            .direction(Direction::Horizontal)
+            .constraints([Constraint::Min(1), Constraint::Length(1)])
+            .split(rows[1]);
+        let para = Paragraph::new(rec.text.clone())
+            .wrap(Wrap { trim: false })
+            .scroll((detail_scroll, 0))
+            .style(Style::default().fg(theme.text));
+        f.render_widget(para, body[0]);
+        let line_count = rec.text.lines().count();
+        let mut sb = ScrollbarState::default().position(detail_scroll as usize).content_length(line_count);
+        f.render_stateful_widget(Scrollbar::default().orientation(ScrollbarOrientation::VerticalRight), body[1], &mut sb);
+    } else if let Some(transient) = &state.transient {
+        // No record selected yet (e.g. first generation in flight) — show the
+        // transient loading/error text.
+        let prefix = if state.generating { format!("{} ", spinner) } else { String::new() };
+        let para = Paragraph::new(format!("{}{}", prefix, transient))
+            .wrap(Wrap { trim: false })
+            .style(Style::default().fg(theme.text));
+        f.render_widget(para, inner);
+    }
+
+    // --- Footer ---
+    let footer_text = if state.copied {
+        "\u{2713} Copied to clipboard".to_string()
+    } else {
+        "\u{2191}/\u{2193} select \u{00B7} \u{2190}/\u{2192} focus list/detail \u{00B7} c copy \u{00B7} d delete \u{00B7} r regenerate \u{00B7} 1 commits \u{00B7} Esc back \u{00B7} q quit".to_string()
+    };
+    let footer_style = if state.copied {
+        Style::default().fg(theme.commit_author.fg.unwrap_or(Color::Green)).add_modifier(Modifier::BOLD)
+    } else {
+        theme.footer
+    };
+    let footer = Paragraph::new(footer_text)
+        .block(Block::default().borders(Borders::ALL))
+        .style(footer_style);
+    f.render_widget(footer, footer_area);
 }
 
 /// Screen regions for the main view, computed once so rendering and mouse
@@ -678,12 +726,4 @@ pub fn compute_layout(area: Rect, show_details: bool, has_selection: bool) -> Ap
     let detail = if columns.len() > 2 { Some(columns[2]) } else { None };
     let tabs = Rect { x: commit.x, y: commit.y, width: commit.width, height: 3 };
     AppLayout { sidebar, commit, detail, tabs, footer: vertical[1] }
-}
-
-/// Centers a rectangle within another rectangle.
-pub fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
-    let vertical = Layout::default().direction(Direction::Vertical)
-        .constraints([Constraint::Percentage((100-percent_y)/2), Constraint::Percentage(percent_y), Constraint::Percentage((100-percent_y)/2)]).split(r)[1];
-    Layout::default().direction(Direction::Horizontal)
-        .constraints([Constraint::Percentage((100-percent_x)/2), Constraint::Percentage(percent_x), Constraint::Percentage((100-percent_x)/2)]).split(vertical)[1]
 }

@@ -3,14 +3,18 @@ use crossterm::event::{KeyCode, MouseEvent, MouseEventKind};
 use tokio::runtime::Runtime;
 use arboard::Clipboard;
 use crate::models::FocusArea;
-use crate::models::PopupQuote;
+use crate::models::{OverviewState, OverviewFocus, OverviewMeta};
 use crate::git::reload_commits;
+use crate::history::{self, OverviewRecord};
 use crate::utils::{get_active_commits, CommitData};
 use anyhow::Result;
 use crate::models::SelectedCommits;
 use crate::models::LockExt;
 use crate::models::{LlmConfig, LlmProvider};
 
+// State is threaded by reference through the input layer (see CLAUDE.md), so
+// these handlers necessarily take many parameters.
+#[allow(clippy::too_many_arguments)]
 pub fn handle_key(
     key: KeyCode,
     intervals: &[(&str, Duration)],
@@ -26,7 +30,7 @@ pub fn handle_key(
     sidebar_scroll: &mut usize,
     commitlist_scroll: &mut usize,
     detail_scroll: &mut u16,
-    popup_quote: &Arc<Mutex<PopupQuote>>,
+    overview_state: &Arc<Mutex<OverviewState>>,
     selected_commits: &Arc<Mutex<SelectedCommits>>,
     rt: &Runtime,
     selected_tab: &mut crate::CommitTab,
@@ -36,21 +40,53 @@ pub fn handle_key(
     detailed_commit_view: &mut bool, // <-- add new argument
     from_date: Option<String>,
     to_date: Option<String>,
-    debug: bool, // <-- show prompt-construction debug info in the popup
+    debug: bool, // <-- show prompt-construction debug info in the overview
+    app_view: &mut crate::AppView,
+    overview_selected: &mut usize,
+    overview_focus: &mut OverviewFocus,
+    overview_detail_scroll: &mut u16,
 ) -> Result<bool> {
     let lang = if lang.is_empty() { "english" } else { lang };
+
+    // The overview view owns the keyboard while active. Navigation/management
+    // keys are handled here and return early; only `a`/`A` (generate a fresh
+    // overview, which needs the commit state below) falls through.
+    if *app_view == crate::AppView::Overview && !matches!(key, KeyCode::Char('a') | KeyCode::Char('A')) {
+        return handle_overview_key(
+            key, overview_state, rt, app_view, selected_tab, focus,
+            overview_selected, overview_focus, overview_detail_scroll,
+        );
+    }
+
     match key {
+        KeyCode::Char('0') => {
+            // Open the overview view if one exists (or is being generated);
+            // otherwise the area stays disabled and nothing happens.
+            let available = {
+                let s = overview_state.lock_safe();
+                !s.items.is_empty() || s.generating
+            };
+            if available {
+                *app_view = crate::AppView::Overview;
+                *overview_selected = 0;
+                *overview_focus = OverviewFocus::List;
+                *overview_detail_scroll = 0;
+            }
+        },
         KeyCode::Char('1') => {
+            *app_view = crate::AppView::Commits;
             *focus = FocusArea::Sidebar;
             if *selected_tab != crate::CommitTab::Timeframe { *selected_commit_index = None; }
             *selected_tab = crate::CommitTab::Timeframe;
         },
         KeyCode::Char('2') => {
+            *app_view = crate::AppView::Commits;
             *focus = FocusArea::CommitList;
             if *selected_tab != crate::CommitTab::Timeframe { *selected_commit_index = None; }
             *selected_tab = crate::CommitTab::Timeframe;
         },
         KeyCode::Char('3') => {
+            *app_view = crate::AppView::Commits;
             *focus = FocusArea::CommitList;
             if *selected_tab != crate::CommitTab::Selection { *selected_commit_index = None; }
             *selected_tab = crate::CommitTab::Selection;
@@ -166,14 +202,6 @@ pub fn handle_key(
             }
         }
         KeyCode::Up | KeyCode::Char('k') => {
-            // Popup scroll up
-            let mut popup = popup_quote.lock_safe();
-            if popup.visible && popup.scroll > 0 {
-                popup.scroll -= 1;
-                return Ok(true); // Prevent background navigation
-            } else if popup.visible {
-                return Ok(true); // Prevent background navigation
-            }
             match *focus {
                 FocusArea::Sidebar => {
                     // Sidebar: Up navigation
@@ -204,18 +232,6 @@ pub fn handle_key(
             }
         }
         KeyCode::Down | KeyCode::Char('j') => {
-            // Popup scroll down
-            let mut popup = popup_quote.lock_safe();
-            if popup.visible {
-                let text_lines = popup.text.lines().count() as u16;
-                // Estimate popup height (centered_rect(60,80,area)), minus title/footer
-                let area = crossterm::terminal::size().unwrap_or((120,40));
-                let popup_height = (area.1 as f32 * 0.8) as u16 - 4;
-                if popup.scroll + popup_height < text_lines {
-                    popup.scroll += 1;
-                }
-                return Ok(true); // Prevent background navigation
-            }
             match *focus {
                 FocusArea::Sidebar => {
                     let repo_count = commits.len();
@@ -348,103 +364,83 @@ pub fn handle_key(
                 }
                 None => crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str),
             };
+            let provider_str = match llm.provider {
+                LlmProvider::Gemini => "gemini",
+                LlmProvider::Custom => "custom",
+            };
+            let meta = OverviewMeta {
+                project: project_name.clone(),
+                interval: interval_str.to_string(),
+                from: from_date.clone(),
+                to: to_date.clone(),
+                lang: lang.to_string(),
+                provider: provider_str.to_string(),
+                model: llm.model.clone(),
+                commit_count,
+                tab: match selected_tab {
+                    crate::CommitTab::Timeframe => "Timeframe",
+                    crate::CommitTab::Selection => "Selection",
+                    crate::CommitTab::Stats => "Stats",
+                }.to_string(),
+            };
+            // Under `--debug` the transient line carries prompt-construction
+            // detail; otherwise a concise loading message.
+            let transient = if debug {
+                let msg = debug_msg.as_deref().unwrap_or("");
+                format!(
+                    "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\nprovider: {provider}\nmodel: {model}\ncommits: [{count} commits, {} chars]\n\nLoading commit summary...",
+                    commit_str.len(),
+                    msg=msg,
+                    from=from_date,
+                    to=to_date,
+                    project=project_name,
+                    lang=lang,
+                    provider=provider_str,
+                    model=llm.model,
+                    count=commit_count,
+                )
+            } else {
+                format!(
+                    "Summarizing {} commit{} from {}…",
+                    commit_count,
+                    if commit_count == 1 { "" } else { "s" },
+                    project_name,
+                )
+            };
+            // Switch to the overview view so the spinner + result appear there.
+            *app_view = crate::AppView::Overview;
+            *overview_selected = 0;
+            *overview_focus = OverviewFocus::List;
+            *overview_detail_scroll = 0;
             {
-                let mut p = popup_quote.lock_safe();
-                p.visible = true;
-                p.loading = true;
-                p.spinner_frame = 0;
-                p.copied = false;
-                // User-facing loading text is concise; the prompt-construction
-                // detail only appears under `--debug`.
-                p.text = if debug {
-                    let msg = debug_msg.as_deref().unwrap_or("");
-                    let provider = match llm.provider {
-                        LlmProvider::Gemini => "gemini",
-                        LlmProvider::Custom => "custom",
-                    };
-                    format!(
-                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\nprovider: {provider}\nmodel: {model}\ncommits: [{count} commits, {} chars]\n\nLoading commit summary...",
-                        commit_str.len(),
-                        msg=msg,
-                        from=from_date,
-                        to=to_date,
-                        project=project_name,
-                        lang=lang,
-                        provider=provider,
-                        model=llm.model,
-                        count=commit_count,
-                    )
-                } else {
-                    format!(
-                        "Summarizing {} commit{} from {}…",
-                        commit_count,
-                        if commit_count == 1 { "" } else { "s" },
-                        project_name,
-                    )
-                };
+                let mut s = overview_state.lock_safe();
+                s.generating = true;
+                s.spinner_frame = 0;
+                s.copied = false;
+                s.transient = Some(transient);
             }
             // For Gemini, surface a missing key immediately (no spinner). For
-            // OpenAI-compatible providers the network layer returns a helpful
-            // message for missing url/model/key, so we let the request flow.
+            // custom OpenAI-compatible providers the network layer returns a
+            // helpful message for missing url/model/key, so we let it flow.
             if llm.provider == LlmProvider::Gemini && std::env::var("GEMINI_API_KEY").is_err() {
                 let config_path = crate::config::get_user_config_path();
                 let error_message = format!(
                     "Gemini API key not found.\n\nPlease add it to your configuration file at:\n{}\n\nOr set it as an environment variable: export GEMINI_API_KEY=your-key",
                     config_path.display()
                 );
-                popup_quote.lock_safe().text = error_message;
+                let mut s = overview_state.lock_safe();
+                s.generating = false;
+                s.transient = Some(error_message);
                 return Ok(true);
             }
-            spawn_summary(rt, popup_quote, prompt, lang.to_string(), llm.clone());
-        }
-        KeyCode::Char('c') => {
-            // Copy the summary to the clipboard and flag it so the popup footer
-            // can confirm. Only meaningful while a finished summary is shown.
-            let mut popup = popup_quote.lock_safe();
-            if popup.visible && !popup.loading && copy_to_clipboard(&popup.text) {
-                popup.copied = true;
-            }
-        }
-        KeyCode::Enter => {
-            // Enter on a finished summary copies and closes in one step — the
-            // usual last action in the standup flow.
-            let mut popup = popup_quote.lock_safe();
-            if popup.visible && !popup.loading {
-                if copy_to_clipboard(&popup.text) {
-                    popup.copied = true;
-                }
-                popup.visible = false;
-                popup.scroll = 0;
-            }
-        }
-        KeyCode::Char('r') => {
-            // Regenerate the last summary (e.g. after closing it) without
-            // rebuilding the prompt from the current selection.
-            let request = {
-                let popup = popup_quote.lock_safe();
-                if popup.loading { None } else { popup.last_request.clone() }
-            };
-            if let Some((prompt, req_lang, req_llm)) = request {
-                {
-                    let mut p = popup_quote.lock_safe();
-                    p.visible = true;
-                    p.loading = true;
-                    p.spinner_frame = 0;
-                    p.copied = false;
-                    p.scroll = 0;
-                    p.text = "Regenerating summary…".to_string();
-                }
-                spawn_summary(rt, popup_quote, prompt, req_lang, req_llm);
-            }
+            spawn_summary(rt, overview_state, prompt, lang.to_string(), llm.clone(), meta);
         }
         KeyCode::Esc => {
-            // Closing while loading also cancels the in-flight request: clearing
-            // `loading` makes the spinner loop break on its next tick, which
-            // drops the pending fetch future (and thus the HTTP request).
-            let mut p = popup_quote.lock_safe();
-            p.visible = false;
-            p.loading = false;
-            p.scroll = 0;
+            // In the commit browser, Esc cancels any in-flight generation:
+            // clearing `generating` makes the spinner loop break on its next
+            // tick, dropping the pending fetch future (and the HTTP request).
+            let mut s = overview_state.lock_safe();
+            s.generating = false;
         }
         KeyCode::Char('d') => {
             *detailed_commit_view = !*detailed_commit_view;
@@ -462,34 +458,12 @@ pub fn handle_mouse(
     selected_repo_index: &mut usize,
     selected_commit_index: &mut Option<usize>,
     focus: &mut FocusArea,
-    popup_quote: &Arc<Mutex<PopupQuote>>,
     sidebar_area: ratatui::prelude::Rect,
     selected_tab: &mut crate::CommitTab,
 ) {
     if let MouseEventKind::Down(_) = mouse_event.kind {
         let x = mouse_event.column;
         let y = mouse_event.row;
-        // Check for popup summary X button
-        {
-            let popup = popup_quote.lock_safe();
-            if popup.visible {
-                // Popup area is centered_rect(60,80,area)
-                // Get area from main window size
-                let area = crossterm::terminal::size().unwrap_or((120,40));
-                let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
-                let popup_area = crate::ui::centered_rect(60, 80, area);
-                // X button is in the title, right side: [X] is 3 chars, with 1 space padding
-                let x_button_x = popup_area.x + popup_area.width - 5; // [X] is at width-4, width-3, width-2
-                let x_button_y = popup_area.y; // title line
-                if y == x_button_y && x >= x_button_x && x < x_button_x + 3 {
-                    // Clicked X
-                    drop(popup); // unlock
-                    let mut popup = popup_quote.lock_safe();
-                    popup.visible = false;
-                    return;
-                }
-            }
-        }
         // Sidebar area: x < sidebar_area.x + sidebar_area.width
         if x >= sidebar_area.x && x < sidebar_area.x + sidebar_area.width && y >= sidebar_area.y && y < sidebar_area.y + sidebar_area.height {
             // Sidebar layout (inside the top border): row 0 = "All Projects",
@@ -507,7 +481,6 @@ pub fn handle_mouse(
                 }
             }
             *selected_commit_index = None;
-            return;
         } else {
             // Commit list / selection area (everything right of the sidebar).
             // The list begins below the 3-row tab bar and inside the list block
@@ -552,42 +525,6 @@ pub fn handle_mouse(
                 // it rather than guessing a wrong commit index.
                 crate::CommitTab::Selection | crate::CommitTab::Stats => {}
             }
-            return;
-        }
-    }
-    if let MouseEventKind::ScrollUp = mouse_event.kind {
-        let popup_area = {
-            let area = crossterm::terminal::size().unwrap_or((120,40));
-            let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
-            crate::ui::centered_rect(60, 80, area)
-        };
-        let x = mouse_event.column;
-        let y = mouse_event.row;
-        if let Ok(mut popup) = popup_quote.lock() {
-            if popup.visible && x >= popup_area.x && x < popup_area.x + popup_area.width && y >= popup_area.y && y < popup_area.y + popup_area.height {
-                if popup.scroll > 0 {
-                    popup.scroll -= 1;
-                }
-                return;
-            }
-        }
-    }
-    if let MouseEventKind::ScrollDown = mouse_event.kind {
-        let popup_area = {
-            let area = crossterm::terminal::size().unwrap_or((120,40));
-            let area = ratatui::prelude::Rect { x: 0, y: 0, width: area.0, height: area.1 };
-            crate::ui::centered_rect(60, 80, area)
-        };
-        let x = mouse_event.column;
-        let y = mouse_event.row;
-        if let Ok(mut popup) = popup_quote.lock() {
-            if popup.visible && x >= popup_area.x && x < popup_area.x + popup_area.width && y >= popup_area.y && y < popup_area.y + popup_area.height {
-                let text_lines = popup.text.lines().count() as u16;
-                let popup_height = popup_area.height.saturating_sub(4); // account for padding/title/footer
-                if popup.scroll + popup_height < text_lines {
-                    popup.scroll += 1;
-                }
-            }
         }
     }
 }
@@ -599,18 +536,156 @@ fn copy_to_clipboard(text: &str) -> bool {
     }
 }
 
-/// Spawns the AI summary fetch on the shared runtime and animates the popup
-/// spinner until it resolves. The single place that dispatches a summary.
+/// Returns true if `text` looks like an error message rather than a real
+/// summary, so it is shown transiently but never persisted to history.
+fn looks_like_error(text: &str) -> bool {
+    const PREFIXES: [&str; 6] = [
+        "AI error",
+        "Gemini API error",
+        "Gemini API key not found",
+        "Custom API",
+        "No OpenAI-compatible",
+        "No summary received",
+    ];
+    let t = text.trim_start();
+    PREFIXES.iter().any(|p| t.starts_with(p))
+        || t.contains("API key not found")
+        || t.contains("API key not configured")
+}
+
+/// Handles all keyboard input while the overview view is active. Returns
+/// `Ok(false)` to quit the app, `Ok(true)` otherwise.
+#[allow(clippy::too_many_arguments)]
+fn handle_overview_key(
+    key: KeyCode,
+    overview_state: &Arc<Mutex<OverviewState>>,
+    rt: &Runtime,
+    app_view: &mut crate::AppView,
+    selected_tab: &mut crate::CommitTab,
+    focus: &mut FocusArea,
+    overview_selected: &mut usize,
+    overview_focus: &mut OverviewFocus,
+    overview_detail_scroll: &mut u16,
+) -> Result<bool> {
+    let len = overview_state.lock_safe().items.len();
+    match key {
+        KeyCode::Char('q') => return Ok(false),
+        // Leave the overview view back to the commit browser.
+        KeyCode::Esc => {
+            *app_view = crate::AppView::Commits;
+        }
+        KeyCode::Char('1') => {
+            *app_view = crate::AppView::Commits;
+            *focus = FocusArea::Sidebar;
+            *selected_tab = crate::CommitTab::Timeframe;
+        }
+        KeyCode::Char('2') => {
+            *app_view = crate::AppView::Commits;
+            *focus = FocusArea::CommitList;
+            *selected_tab = crate::CommitTab::Timeframe;
+        }
+        KeyCode::Char('3') => {
+            *app_view = crate::AppView::Commits;
+            *focus = FocusArea::CommitList;
+            *selected_tab = crate::CommitTab::Selection;
+        }
+        // Toggle focus between the list and the detail pane.
+        KeyCode::Left | KeyCode::Char('h') | KeyCode::Right | KeyCode::Char('l') | KeyCode::Tab => {
+            *overview_focus = match *overview_focus {
+                OverviewFocus::List => OverviewFocus::Detail,
+                OverviewFocus::Detail => OverviewFocus::List,
+            };
+        }
+        KeyCode::Up | KeyCode::Char('k') => match *overview_focus {
+            OverviewFocus::List => {
+                if *overview_selected > 0 {
+                    *overview_selected -= 1;
+                    *overview_detail_scroll = 0;
+                }
+            }
+            OverviewFocus::Detail => {
+                *overview_detail_scroll = overview_detail_scroll.saturating_sub(1);
+            }
+        },
+        KeyCode::Down | KeyCode::Char('j') => match *overview_focus {
+            OverviewFocus::List => {
+                if len > 0 && *overview_selected + 1 < len {
+                    *overview_selected += 1;
+                    *overview_detail_scroll = 0;
+                }
+            }
+            OverviewFocus::Detail => {
+                *overview_detail_scroll = overview_detail_scroll.saturating_add(1);
+            }
+        },
+        // Copy the selected overview's text to the clipboard.
+        KeyCode::Char('c') | KeyCode::Enter => {
+            let mut s = overview_state.lock_safe();
+            if let Some(rec) = s.items.get(*overview_selected) {
+                if copy_to_clipboard(&rec.text) {
+                    s.copied = true;
+                }
+            }
+        }
+        // Delete the selected overview and persist the change.
+        KeyCode::Char('d') => {
+            let items = {
+                let mut s = overview_state.lock_safe();
+                if *overview_selected < s.items.len() {
+                    s.items.remove(*overview_selected);
+                    s.copied = false;
+                }
+                if *overview_selected >= s.items.len() {
+                    *overview_selected = s.items.len().saturating_sub(1);
+                }
+                s.items.clone()
+            };
+            let _ = history::save_overviews(&items);
+            // If nothing is left, the area becomes disabled again — go back.
+            if items.is_empty() {
+                *app_view = crate::AppView::Commits;
+            }
+        }
+        // Regenerate from the last dispatched request.
+        KeyCode::Char('r') => {
+            let request = {
+                let s = overview_state.lock_safe();
+                if s.generating { None } else { s.last_request.clone() }
+            };
+            if let Some((prompt, req_lang, req_llm, meta)) = request {
+                {
+                    let mut s = overview_state.lock_safe();
+                    s.generating = true;
+                    s.spinner_frame = 0;
+                    s.copied = false;
+                    s.transient = Some("Regenerating summary…".to_string());
+                }
+                *overview_selected = 0;
+                *overview_detail_scroll = 0;
+                spawn_summary(rt, overview_state, prompt, req_lang, req_llm, meta);
+            }
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
+/// Spawns the AI summary fetch on the shared runtime and animates the spinner
+/// until it resolves. On success the result is stored as an `OverviewRecord`
+/// (newest first, capped) and persisted; errors are shown transiently only.
+/// The single place that dispatches a summary.
 fn spawn_summary(
     rt: &Runtime,
-    popup_quote: &Arc<Mutex<PopupQuote>>,
+    overview_state: &Arc<Mutex<OverviewState>>,
     prompt: String,
     lang: String,
     llm: LlmConfig,
+    meta: OverviewMeta,
 ) {
     // Remember the request so `r` can regenerate it later.
-    popup_quote.lock_safe().last_request = Some((prompt.clone(), lang.clone(), llm.clone()));
-    let popup = popup_quote.clone();
+    overview_state.lock_safe().last_request =
+        Some((prompt.clone(), lang.clone(), llm.clone(), meta.clone()));
+    let state = overview_state.clone();
     rt.spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
         // Run the spinner loop and the fetch concurrently.
@@ -619,18 +694,41 @@ fn spawn_summary(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    let mut p = popup.lock_safe();
-                    if !p.loading { break; }
-                    p.spinner_frame = p.spinner_frame.wrapping_add(1);
+                    let mut s = state.lock_safe();
+                    if !s.generating { break; }
+                    s.spinner_frame = s.spinner_frame.wrapping_add(1);
                 }
                 result = &mut fetch => {
                     let summary = match result {
                         Ok(s) => s,
                         Err(e) => format!("AI error: {}", e),
                     };
-                    let mut p = popup.lock_safe();
-                    p.text = summary;
-                    p.loading = false;
+                    let mut s = state.lock_safe();
+                    s.generating = false;
+                    if looks_like_error(&summary) {
+                        // Surface the error transiently; do not persist it.
+                        s.transient = Some(summary);
+                    } else {
+                        let now = chrono::Local::now();
+                        let record = OverviewRecord {
+                            created_at: now.format("%Y-%m-%d %H:%M").to_string(),
+                            created_unix: now.timestamp(),
+                            text: summary,
+                            project: meta.project,
+                            interval: meta.interval,
+                            from: meta.from,
+                            to: meta.to,
+                            lang: meta.lang,
+                            provider: meta.provider,
+                            model: meta.model,
+                            commit_count: meta.commit_count,
+                            tab: meta.tab,
+                        };
+                        s.items.insert(0, record);
+                        s.items.truncate(history::MAX_OVERVIEWS);
+                        s.transient = None;
+                        let _ = history::save_overviews(&s.items);
+                    }
                     break;
                 }
             }

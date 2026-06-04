@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}, style::Stylize};
 use ratatui::prelude::*;
-use models::{FocusArea, PopupQuote, LlmConfig, LlmProvider};
+use models::{FocusArea, OverviewState, OverviewFocus, LlmConfig, LlmProvider};
 use git::{find_git_repos, reload_commits};
 use ui::render_commits;
 use crate::input::{handle_key, handle_mouse};
@@ -90,6 +90,14 @@ impl CommitTab {
             _ => CommitTab::Timeframe,
         }
     }
+}
+
+/// Top-level screen. The overview view (reachable with `0`) fully replaces the
+/// commit browser layout with its own master/detail of stored AI overviews.
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum AppView {
+    Commits,
+    Overview,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -194,8 +202,21 @@ fn main() -> anyhow::Result<()> {
     let mut commitlist_scroll = 0;
     let mut detail_scroll = 0;
 
-    let popup_quote = Arc::new(Mutex::new(PopupQuote { visible: false, text: String::new(), loading: false, scroll: 0, spinner_frame: 0, copied: false, last_request: None }));
+    let overview_state = Arc::new(Mutex::new(OverviewState {
+        items: history::load_overviews(),
+        generating: false,
+        spinner_frame: 0,
+        copied: false,
+        transient: None,
+        last_request: None,
+    }));
     let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: BTreeMap::new() }));
+
+    // Top-level view + overview-view navigation state (threaded like the rest).
+    let mut app_view = AppView::Commits;
+    let mut overview_selected: usize = 0;
+    let mut overview_focus = OverviewFocus::List;
+    let mut overview_detail_scroll: u16 = 0;
 
     let rt = Runtime::new()?;
     terminal::enable_raw_mode()?;
@@ -233,10 +254,14 @@ fn main() -> anyhow::Result<()> {
                 commitlist_scroll,
                 detail_scroll,
                 filter_by_user,
-                Some(&popup_quote),
+                &overview_state,
                 Some(&selected_commits),
                 selected_tab,
                 detailed_commit_view,
+                app_view == AppView::Overview,
+                overview_selected,
+                overview_focus,
+                overview_detail_scroll,
             );
         })?;
             needs_redraw = false;
@@ -261,7 +286,7 @@ fn main() -> anyhow::Result<()> {
                         &mut sidebar_scroll,
                         &mut commitlist_scroll,
                         &mut detail_scroll,
-                        &popup_quote,
+                        &overview_state,
                         &selected_commits,
                         &rt,
                         &mut selected_tab,
@@ -272,12 +297,19 @@ fn main() -> anyhow::Result<()> {
                         from_date.clone(),
                         to_date.clone(),
                         debug,
+                        &mut app_view,
+                        &mut overview_selected,
+                        &mut overview_focus,
+                        &mut overview_detail_scroll,
                     )?;
                     if !handled {
                         break;
                     }
                 }
                 Event::Mouse(mouse_event) => {
+                    // Mouse only drives the commit browser; the overview view is
+                    // keyboard-only.
+                    if app_view == AppView::Commits {
                     if let Some(sidebar_area) = last_sidebar_area {
                         handle_mouse(
                             mouse_event,
@@ -285,7 +317,6 @@ fn main() -> anyhow::Result<()> {
                             &mut selected_repo_index,
                             &mut selected_commit_index,
                             &mut focus,
-                            &popup_quote,
                             sidebar_area,
                             &mut selected_tab,
                         );
@@ -316,6 +347,7 @@ fn main() -> anyhow::Result<()> {
                             }
                         }
                     }
+                    }
                 }
                 _ => {}
             }
@@ -323,7 +355,7 @@ fn main() -> anyhow::Result<()> {
 
         // Keep repainting while a summary is loading (spinner) and once more
         // when it finishes, so the final result is shown without another event.
-        let is_loading = popup_quote.lock_safe().loading;
+        let is_loading = overview_state.lock_safe().generating;
         if is_loading || is_loading != prev_loading {
             needs_redraw = true;
         }

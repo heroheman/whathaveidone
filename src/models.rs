@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
+use crate::history::OverviewRecord;
 
 /// Poison-tolerant locking for shared UI state.
 ///
@@ -49,18 +50,51 @@ pub struct LlmConfig {
     pub api_key: String,
 }
 
-/// State for the AI quote popup.
+/// Which area of the overview view is focused.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum OverviewFocus {
+    /// The left list of stored overviews.
+    List,
+    /// The right detail pane (scrollable text).
+    Detail,
+}
+
+/// Metadata captured when a summary is dispatched, carried through the async
+/// fetch so the finished result can be stored as an `OverviewRecord` and so a
+/// regenerate (`r`) reproduces the same request context.
+#[derive(Clone, Debug)]
+pub struct OverviewMeta {
+    pub project: String,
+    pub interval: String,
+    pub from: String,
+    pub to: String,
+    pub lang: String,
+    pub provider: String,
+    pub model: String,
+    pub commit_count: usize,
+    pub tab: String,
+}
+
+/// Shared state for the AI overview view. Replaces the former popup: holds the
+/// persisted overviews plus the transient generation state. Lives behind an
+/// `Arc<Mutex<…>>` so the async summary task can push results and the renderer
+/// can read them.
 #[derive(Debug)]
-pub struct PopupQuote {
-    pub visible: bool,
-    pub text: String,
-    pub loading: bool,
-    pub scroll: u16, // scroll offset for popup summary
-    pub spinner_frame: u8, // frame index for loading spinner
-    pub copied: bool, // true once the current summary was copied to the clipboard
-    /// The last dispatched request (prompt, lang, llm config), kept so `r` can
-    /// regenerate the summary without rebuilding it from scratch.
-    pub last_request: Option<(String, String, LlmConfig)>,
+pub struct OverviewState {
+    /// Stored overviews, newest first (mirrors `history::load_overviews`).
+    pub items: Vec<OverviewRecord>,
+    /// True while a summary is being generated (drives the spinner + redraw).
+    pub generating: bool,
+    /// Frame index for the loading spinner.
+    pub spinner_frame: u8,
+    /// True once the selected overview was copied to the clipboard.
+    pub copied: bool,
+    /// Transient text shown at the top while generating or on error (errors are
+    /// not persisted to `items`).
+    pub transient: Option<String>,
+    /// The last dispatched request (prompt, lang, llm config, metadata), kept so
+    /// `r` can regenerate without rebuilding it from the current selection.
+    pub last_request: Option<(String, String, LlmConfig, OverviewMeta)>,
 }
 
 /// State for selected/marked commits.
