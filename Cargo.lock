@@ -2881,7 +2881,9 @@ dependencies = [
  "once_cell",
  "ratatui",
  "regex",
+ "reqwest",
  "serde",
+ "serde_json",
  "tokio",
  "toml",
 ]

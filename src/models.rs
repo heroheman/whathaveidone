@@ -25,6 +25,30 @@ pub enum FocusArea {
     Detail,
 }
 
+/// Which AI backend a summary request is sent to.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LlmProvider {
+    /// Google Gemini via the `gemini-rs` crate.
+    Gemini,
+    /// Any custom OpenAI-compatible chat-completions endpoint (OpenRouter,
+    /// Vercel AI Gateway, a local server, OpenAI itself, …).
+    Custom,
+}
+
+/// Everything `network` needs to fetch one summary. Resolved once in `main`
+/// from config + CLI flags and threaded through the input layer so a single
+/// request carries its provider, model, endpoint and key together.
+#[derive(Clone, Debug)]
+pub struct LlmConfig {
+    pub provider: LlmProvider,
+    pub model: String,
+    /// Base URL of the custom OpenAI-compatible endpoint (ignored for Gemini).
+    pub base_url: String,
+    /// API key. For Gemini this mirrors `GEMINI_API_KEY`; for a custom provider
+    /// it is sent as the `Authorization: Bearer …` header.
+    pub api_key: String,
+}
+
 /// State for the AI quote popup.
 #[derive(Debug)]
 pub struct PopupQuote {
@@ -34,9 +58,9 @@ pub struct PopupQuote {
     pub scroll: u16, // scroll offset for popup summary
     pub spinner_frame: u8, // frame index for loading spinner
     pub copied: bool, // true once the current summary was copied to the clipboard
-    /// The last dispatched request (prompt, lang, model), kept so `r` can
+    /// The last dispatched request (prompt, lang, llm config), kept so `r` can
     /// regenerate the summary without rebuilding it from scratch.
-    pub last_request: Option<(String, String, String)>,
+    pub last_request: Option<(String, String, LlmConfig)>,
 }
 
 /// State for selected/marked commits.

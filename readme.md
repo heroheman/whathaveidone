@@ -1,6 +1,6 @@
 # whathaveidone
 
-A terminal tool to summarize your Git commit history for daily standups, using AI (Gemini API).
+A terminal tool to summarize your Git commit history for daily standups, using AI. Works with Google Gemini out of the box, or with any OpenAI-compatible API (OpenRouter, the Vercel AI Gateway, a local server, OpenAI itself, …).
 
 <a href="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq" target="_blank"><img src="https://asciinema.org/a/l58gl6wettdA3x4eLD4jCkWkq.svg" /></a>
 
@@ -20,19 +20,28 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 
 ### Prerequisites
 - [Rust](https://rustup.rs/) (for building)
-- A [Gemini API key](https://aistudio.google.com/app/apikey)
+- An API key for your chosen provider — a [Gemini API key](https://aistudio.google.com/app/apikey), or a key for any OpenAI-compatible service (e.g. [OpenRouter](https://openrouter.ai/), the [Vercel AI Gateway](https://vercel.com/docs/ai-gateway), or OpenAI).
 
 ### Build & Install
 ```sh
 cargo install whathaveidone
 ```
 
-### Set up your Gemini API key
-You must set your Gemini API key before running the app:
+### Set up your API key
+
+**Gemini (default):**
 ```sh
 export GEMINI_API_KEY=your-key-here
 ```
-Add this line to your shell profile (e.g. `~/.zshrc`) to make it persistent across terminal sessions.
+On first run, if no key is found, the app also offers to save one to `~/.config/whid/whid.toml`.
+
+**Custom OpenAI-compatible providers:**
+```sh
+export CUSTOM_API_KEY=your-key-here
+```
+You can also store the key directly in your config as `custom_api_key`.
+
+Add the relevant `export` line to your shell profile (e.g. `~/.zshrc`) to make it persistent across terminal sessions.
 
 ---
 
@@ -53,9 +62,26 @@ The application loads settings from up to three locations in the following order
 Here's an example of the `whid.toml` file and the available settings:
 
 ```toml
-# The default Gemini model to use for summaries.
+# Which AI backend to use: "gemini" (default) or "custom".
+# Can be overridden by the --provider command-line flag.
+provider = "gemini"
+
+# The default Gemini model to use for summaries (when provider = "gemini").
 # This can be overridden by the --model command-line flag.
 gemini_model = "gemini-2.0-flash"
+
+# --- Custom OpenAI-compatible provider settings (used when provider = "custom") ---
+# Base URL of the endpoint, e.g. https://openrouter.ai/api/v1 or https://api.openai.com/v1.
+# Can be overridden by the --base-url command-line flag.
+custom_base_url = ""
+
+# Model name for the custom provider, e.g. "openai/gpt-4o-mini".
+# Can be overridden by the --model command-line flag.
+custom_model = ""
+
+# API key for the custom provider.
+# If empty, the CUSTOM_API_KEY environment variable is used instead.
+custom_api_key = ""
 
 # Optional: Path to a custom prompt template file.
 # If provided, this file will be used for AI summaries.
@@ -78,17 +104,39 @@ whathaveidone
 whid
 ```
 
-### Gemini model selection
-You can select the Gemini model version by setting the `gemini_model` in your `whid.toml` configuration file, or by using the `--model <model>` parameter as a command-line override. The default is `gemini-2.0-flash`.
+### Provider & model selection
 
-Example:
+By default `whathaveidone` uses Google **Gemini**. You can switch to any **custom OpenAI-compatible** API (OpenRouter, Vercel AI Gateway, a local server, OpenAI itself) by setting `provider = "custom"` in your `whid.toml`, or with the `--provider` flag.
+
+**Gemini model selection**
+
+Set `gemini_model` in your config, or use `--model <model>` as a command-line override. The default is `gemini-3.1-flash-lite`.
+
 ```sh
-whathaveidone --gemini gemini-1.5-pro
-#or 
-whathaveidone --gemini gemini-2.5-flash-preview-05-20
-
+whathaveidone --model gemini-1.5-pro
+# or
+whathaveidone --model gemini-2.5-flash-preview-05-20
 ```
-The selected model will be shown in the summary popup while waiting for the AI response. 
+
+**Custom OpenAI-compatible provider**
+
+Set `provider = "custom"`, a `custom_base_url`, and a `custom_model` in your config — or pass them on the command line. The API key comes from `custom_api_key` in the config or the `CUSTOM_API_KEY` environment variable.
+
+```sh
+# OpenRouter example
+export CUSTOM_API_KEY=sk-or-...
+whathaveidone --provider custom \
+  --base-url https://openrouter.ai/api/v1 \
+  --model openai/gpt-4o-mini
+
+# OpenAI example
+export CUSTOM_API_KEY=sk-...
+whathaveidone --provider custom \
+  --base-url https://api.openai.com/v1 \
+  --model gpt-4o-mini
+```
+
+The selected provider and model are shown in the summary popup (and in the `--debug` output) while waiting for the AI response.
 
 ### Language selection
 To use a specific language for the AI summary, add the `--lang <language>` parameter:

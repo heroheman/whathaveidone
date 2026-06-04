@@ -1,6 +1,6 @@
 # The default Gemini model to use for summaries.
 # This can be overridden by the --model command-line flag.
-gemini_model = "gemini-2.0-flash"
+gemini_model = "gemini-3.1-flash-lite"
 
 # Your Gemini API key.
 # If this is empty, the application will check the GEMINI_API_KEY environment variable.
@@ -18,3 +18,25 @@ custom_prompt_path = ""
 # Default language for the AI summary.
 # Can be overridden by the --lang command-line flag.
 lang = "english"
+
+# Which AI backend to use: "gemini" (default) or "custom".
+# "custom" works with any OpenAI-compatible chat-completions API such as
+# OpenRouter, the Vercel AI Gateway, a local server, or OpenAI itself.
+# Can be overridden by the --provider command-line flag.
+provider = "gemini"
+
+# Base URL of the custom OpenAI-compatible endpoint (only used when provider = "custom").
+# Examples:
+#   https://openrouter.ai/api/v1
+#   https://api.openai.com/v1
+# Can be overridden by the --base-url command-line flag.
+custom_base_url = "https://openrouter.ai/api/v1"
+
+# Model name for the custom provider, e.g. "openai/gpt-4o-mini"
+# or "anthropic/claude-3.5-sonnet" on OpenRouter.
+# Can be overridden by the --model command-line flag.
+custom_model = "google/gemini-3.1-flash-lite"
+
+# API key for the custom provider.
+# If empty, the CUSTOM_API_KEY environment variable is used instead.
+custom_api_key = ""

@@ -9,6 +9,7 @@ use crate::utils::{get_active_commits, CommitData};
 use anyhow::Result;
 use crate::models::SelectedCommits;
 use crate::models::LockExt;
+use crate::models::{LlmConfig, LlmProvider};
 
 pub fn handle_key(
     key: KeyCode,
@@ -31,7 +32,7 @@ pub fn handle_key(
     selected_tab: &mut crate::CommitTab,
     lang: &str, // <-- add lang argument
     prompt_path: Option<&str>, // <-- add prompt_path argument
-    gemini_model: &str, // <-- add gemini_model argument
+    llm: &LlmConfig, // <-- AI provider/model/endpoint/key for summaries
     detailed_commit_view: &mut bool, // <-- add new argument
     from_date: Option<String>,
     to_date: Option<String>,
@@ -357,15 +358,20 @@ pub fn handle_key(
                 // detail only appears under `--debug`.
                 p.text = if debug {
                     let msg = debug_msg.as_deref().unwrap_or("");
+                    let provider = match llm.provider {
+                        LlmProvider::Gemini => "gemini",
+                        LlmProvider::Custom => "custom",
+                    };
                     format!(
-                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\ngemini_model: {gemini_model}\ncommits: [{count} commits, {} chars]\n\nLoading commit summary...",
+                        "{msg}\n\nPrompt variables:\n----------------\nfrom: {from}\nto: {to}\nproject: {project}\nlang: {lang}\nprovider: {provider}\nmodel: {model}\ncommits: [{count} commits, {} chars]\n\nLoading commit summary...",
                         commit_str.len(),
                         msg=msg,
                         from=from_date,
                         to=to_date,
                         project=project_name,
                         lang=lang,
-                        gemini_model=gemini_model,
+                        provider=provider,
+                        model=llm.model,
                         count=commit_count,
                     )
                 } else {
@@ -377,8 +383,10 @@ pub fn handle_key(
                     )
                 };
             }
-            // Check for Gemini API key before spawning async task
-            if std::env::var("GEMINI_API_KEY").is_err() {
+            // For Gemini, surface a missing key immediately (no spinner). For
+            // OpenAI-compatible providers the network layer returns a helpful
+            // message for missing url/model/key, so we let the request flow.
+            if llm.provider == LlmProvider::Gemini && std::env::var("GEMINI_API_KEY").is_err() {
                 let config_path = crate::config::get_user_config_path();
                 let error_message = format!(
                     "Gemini API key not found.\n\nPlease add it to your configuration file at:\n{}\n\nOr set it as an environment variable: export GEMINI_API_KEY=your-key",
@@ -387,7 +395,7 @@ pub fn handle_key(
                 popup_quote.lock_safe().text = error_message;
                 return Ok(true);
             }
-            spawn_summary(rt, popup_quote, prompt, lang.to_string(), gemini_model.to_string());
+            spawn_summary(rt, popup_quote, prompt, lang.to_string(), llm.clone());
         }
         KeyCode::Char('c') => {
             // Copy the summary to the clipboard and flag it so the popup footer
@@ -416,7 +424,7 @@ pub fn handle_key(
                 let popup = popup_quote.lock_safe();
                 if popup.loading { None } else { popup.last_request.clone() }
             };
-            if let Some((prompt, req_lang, model)) = request {
+            if let Some((prompt, req_lang, req_llm)) = request {
                 {
                     let mut p = popup_quote.lock_safe();
                     p.visible = true;
@@ -426,7 +434,7 @@ pub fn handle_key(
                     p.scroll = 0;
                     p.text = "Regenerating summary…".to_string();
                 }
-                spawn_summary(rt, popup_quote, prompt, req_lang, model);
+                spawn_summary(rt, popup_quote, prompt, req_lang, req_llm);
             }
         }
         KeyCode::Esc => {
@@ -598,15 +606,15 @@ fn spawn_summary(
     popup_quote: &Arc<Mutex<PopupQuote>>,
     prompt: String,
     lang: String,
-    model: String,
+    llm: LlmConfig,
 ) {
     // Remember the request so `r` can regenerate it later.
-    popup_quote.lock_safe().last_request = Some((prompt.clone(), lang.clone(), model.clone()));
+    popup_quote.lock_safe().last_request = Some((prompt.clone(), lang.clone(), llm.clone()));
     let popup = popup_quote.clone();
     rt.spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_millis(100));
         // Run the spinner loop and the fetch concurrently.
-        let fetch = crate::network::fetch_gemini_commit_summary(&prompt, &lang, &model);
+        let fetch = crate::network::fetch_commit_summary(&prompt, &lang, &llm);
         tokio::pin!(fetch);
         loop {
             tokio::select! {
@@ -618,7 +626,7 @@ fn spawn_summary(
                 result = &mut fetch => {
                     let summary = match result {
                         Ok(s) => s,
-                        Err(e) => format!("Gemini error: {}", e),
+                        Err(e) => format!("AI error: {}", e),
                     };
                     let mut p = popup.lock_safe();
                     p.text = summary;

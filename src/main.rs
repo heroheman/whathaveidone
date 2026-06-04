@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 use crossterm::{execute, terminal::{self, Clear as CrosstermClear, ClearType, enable_raw_mode, disable_raw_mode}, event::{self, Event, KeyCode, read}, style::Stylize};
 use ratatui::prelude::*;
-use models::{FocusArea, PopupQuote};
+use models::{FocusArea, PopupQuote, LlmConfig, LlmProvider};
 use git::{find_git_repos, reload_commits};
 use ui::render_commits;
 use crate::input::{handle_key, handle_mouse};
@@ -43,9 +43,17 @@ struct Cli {
     #[arg(long)]
     prompt: Option<String>,
 
-    /// The Gemini model to use for summaries (e.g., gemini-1.5-flash)
+    /// The model to use for summaries (e.g., gemini-1.5-flash, or openai/gpt-4o-mini)
     #[arg(long)]
     model: Option<String>,
+
+    /// AI provider: "gemini" (default) or "custom" (any OpenAI-compatible API)
+    #[arg(long)]
+    provider: Option<String>,
+
+    /// Base URL of a custom OpenAI-compatible endpoint (e.g. https://openrouter.ai/api/v1)
+    #[arg(long)]
+    base_url: Option<String>,
 
     /// Start date for the commit history (YYYY-MM-DD)
     #[arg(long, value_name = "YYYY-MM-DD")]
@@ -87,17 +95,31 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let mut settings = Settings::new().map_err(|e| anyhow::anyhow!("Failed to load settings: {e}"))?;
 
+    // Resolve which AI backend to use (CLI flag overrides config; default gemini).
+    let provider_str = cli.provider.clone()
+        .or_else(|| settings.provider.clone())
+        .unwrap_or_else(|| "gemini".to_string());
+    let provider = match provider_str.trim().to_lowercase().as_str() {
+        "custom" => LlmProvider::Custom,
+        _ => LlmProvider::Gemini,
+    };
+
     // Check for API key from config or environment variable
     let api_key_from_env = env::var("GEMINI_API_KEY").ok();
     let mut api_key = settings.gemini_api_key.clone().filter(|k| !k.is_empty()).or(api_key_from_env);
 
-    // If no key is found, prompt the user
-    if api_key.is_none() && settings.prompt_for_api_key && unsafe { prompt_for_api_key()? } {
+    // If no Gemini key is found, prompt the user — but only when Gemini is the
+    // active backend; OpenAI-compatible providers use their own key below.
+    if provider == LlmProvider::Gemini
+        && api_key.is_none()
+        && settings.prompt_for_api_key
+        && unsafe { prompt_for_api_key()? }
+    {
         // Re-load settings to get the new key
         settings = Settings::new().map_err(|e| anyhow::anyhow!("Failed to reload settings after key entry: {e}"))?;
         api_key = settings.gemini_api_key.clone();
     }
-    
+
     // If a key is available (from config or prompt), set it as an env var for gemini-rs to pick up
     if let Some(key) = &api_key {
         unsafe {
@@ -117,14 +139,35 @@ fn main() -> anyhow::Result<()> {
     let initial_interval = Duration::from_secs(hours * 3600);
     let lang = cli.lang.or(settings.lang).unwrap_or_else(|| "en".to_string());
     let prompt_path = cli.prompt.or(settings.custom_prompt_path);
-    let cli_gemini_model = cli.model;
+    let cli_model = cli.model;
     let from_date = cli.from;
     let to_date = cli.to;
     let debug = cli.debug;
-    let mut gemini_model = settings.gemini_model;
-    if let Some(model) = cli_gemini_model {
-        gemini_model = model;
-    }
+
+    // Resolve the model for the active provider (CLI --model overrides config).
+    let model = cli_model.unwrap_or_else(|| match provider {
+        LlmProvider::Gemini => settings.gemini_model.clone(),
+        LlmProvider::Custom => settings.custom_model.clone().unwrap_or_default(),
+    });
+
+    // Custom OpenAI-compatible endpoint + key (key falls back to CUSTOM_API_KEY).
+    let custom_base_url = cli.base_url
+        .or_else(|| settings.custom_base_url.clone())
+        .unwrap_or_default();
+    let custom_api_key = settings.custom_api_key.clone()
+        .filter(|k| !k.is_empty())
+        .or_else(|| env::var("CUSTOM_API_KEY").ok())
+        .unwrap_or_default();
+
+    let llm = LlmConfig {
+        provider,
+        model,
+        base_url: custom_base_url,
+        api_key: match provider {
+            LlmProvider::Gemini => api_key.clone().unwrap_or_default(),
+            LlmProvider::Custom => custom_api_key,
+        },
+    };
 
     let repos = find_git_repos(std::path::Path::new("."))?;
 
@@ -223,7 +266,7 @@ fn main() -> anyhow::Result<()> {
                         &mut selected_tab,
                         &lang,
                         prompt_path.as_deref(),
-                        &gemini_model,
+                        &llm,
                         &mut detailed_commit_view,
                         from_date.clone(),
                         to_date.clone(),

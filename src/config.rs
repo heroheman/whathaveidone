@@ -11,6 +11,14 @@ pub struct Settings {
     pub prompt_for_api_key: bool,
     pub custom_prompt_path: Option<String>,
     pub lang: Option<String>,
+    /// Which AI backend to use: "gemini" (default) or "custom".
+    pub provider: Option<String>,
+    /// Base URL of a custom OpenAI-compatible endpoint (e.g. OpenRouter, Vercel).
+    pub custom_base_url: Option<String>,
+    /// Model name for the custom OpenAI-compatible provider.
+    pub custom_model: Option<String>,
+    /// API key for the custom provider (falls back to CUSTOM_API_KEY).
+    pub custom_api_key: Option<String>,
 }
 
 impl Settings {
