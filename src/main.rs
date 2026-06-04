@@ -80,7 +80,7 @@ impl CommitTab {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let mut settings = Settings::new().expect("Failed to load settings");
+    let mut settings = Settings::new().map_err(|e| anyhow::anyhow!("Failed to load settings: {e}"))?;
 
     // Check for API key from config or environment variable
     let api_key_from_env = env::var("GEMINI_API_KEY").ok();
@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
     // If no key is found, prompt the user
     if api_key.is_none() && settings.prompt_for_api_key && unsafe { prompt_for_api_key()? } {
         // Re-load settings to get the new key
-        settings = Settings::new().expect("Failed to reload settings after key entry");
+        settings = Settings::new().map_err(|e| anyhow::anyhow!("Failed to reload settings after key entry: {e}"))?;
         api_key = settings.gemini_api_key.clone();
     }
     

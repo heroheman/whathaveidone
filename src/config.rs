@@ -20,19 +20,26 @@ impl Settings {
         // Ensure the user config directory exists
         if let Some(parent) = user_config_path.parent() {
             if !parent.exists() {
-                fs::create_dir_all(parent).expect("Could not create config directory");
+                fs::create_dir_all(parent).map_err(|e| ConfigError::Message(format!(
+                    "Could not create config directory {}: {e}", parent.display()
+                )))?;
             }
         }
 
-        // Read the blueprint
+        // Read the blueprint (compiled-in asset; a parse failure is a build bug).
         let blueprint_content = include_str!("../whid.toml");
         let blueprint_table: toml::Table = blueprint_content.parse()
-            .expect("Could not parse blueprint config as TOML");
+            .expect("embedded blueprint whid.toml is not valid TOML");
 
-        // Read the user config, or create an empty table if it doesn't exist
-        let user_config_content = fs::read_to_string(&user_config_path).unwrap_or_default();
-        let mut user_table: toml::Table = user_config_content.parse()
-            .unwrap_or_else(|_| toml::Table::new());
+        // Read the existing user config. If the file is present but invalid,
+        // surface an error instead of silently discarding the user's settings.
+        let mut user_table: toml::Table = match fs::read_to_string(&user_config_path) {
+            Ok(content) => content.parse().map_err(|e| ConfigError::Message(format!(
+                "User config at {} is not valid TOML: {e}. Fix or remove the file.",
+                user_config_path.display()
+            )))?,
+            Err(_) => toml::Table::new(),
+        };
 
         let mut config_was_updated = false;
         // Iterate over the blueprint and add missing keys to the user config
@@ -45,8 +52,9 @@ impl Settings {
 
         // If the user config was modified, write it back to the file
         if config_was_updated || !user_config_path.exists() {
-            fs::write(&user_config_path, user_table.to_string())
-                .expect("Could not write updated user config file");
+            fs::write(&user_config_path, user_table.to_string()).map_err(|e| ConfigError::Message(format!(
+                "Could not write user config {}: {e}", user_config_path.display()
+            )))?;
         }
 
 
