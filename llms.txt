@@ -1,0 +1,111 @@
+# whathaveidone
+
+> A Rust terminal UI (TUI) that scans Git repositories below the current directory, lists recent commits grouped by time and repo, and turns them into a ready-to-read daily-standup summary using AI. Works with Google Gemini out of the box, or any OpenAI-compatible API (OpenRouter, the Vercel AI Gateway, OpenAI, a local server). The binary is `whathaveidone`, with a short alias `whid`.
+
+This file follows the llms.txt convention (https://llmstxt.org). It is a concise, machine-readable description of the project and how to use it.
+
+## What it is
+
+- Name: whathaveidone (alias: whid)
+- Type: command-line / terminal UI tool, written in Rust (Ratatui + Crossterm)
+- Purpose: summarize your recent Git commits for daily standups with AI
+- License: MIT
+- Repository: https://github.com/heroheman/whathaveidone
+- Package: https://crates.io/crates/whathaveidone
+- Documentation: https://heroheman.github.io/whathaveidone/docs.html
+- It shells out to the `git` binary (it does not use a git library). `find_git_repos` recurses one level unless the start dir is itself a repo.
+
+## Install
+
+```sh
+cargo install whathaveidone
+```
+
+This installs two binaries: `whathaveidone` and the short alias `whid`. Rust is required to build.
+
+## Quick usage
+
+```sh
+whathaveidone                 # interactive TUI; today's commits across all repos below ./
+whathaveidone week --lang german
+```
+
+On first launch an interactive setup wizard configures provider, model, API key, and language. Inside the TUI press `a` to generate an AI overview, `?` for help, `q` to quit.
+
+## Programmatic / non-interactive use (recommended for agents and scripts)
+
+Two flags skip the TUI entirely and print to stdout, so the output is pipeable. The setup wizard and API-key prompt are skipped in this mode; a missing key or provider error is written to stderr with a non-zero exit code, so piped output stays clean.
+
+```sh
+# Print raw commits (grouped per repo with a "## reponame" header) and exit
+whathaveidone --list
+whathaveidone -l week
+
+# Generate an AI summary, print it to stdout, and exit
+whathaveidone --generate
+whathaveidone -g week --lang german > standup.md
+whathaveidone -g | pbcopy
+```
+
+Both honour the timeframe argument and the `--from` / `--to`, `--lang`, `--provider`, `--model`, and `--base-url` flags. A successful `--generate` is also saved to the overview history (capped by `recent_generations`).
+
+## CLI flags
+
+- `[timeframe]` — positional start window: `today`/`24` (default), `48`, `72`/`yesterday`, `week`, `month`, or a raw number of hours.
+- `--lang <language>` — summary language (e.g. `english`, `german`).
+- `--model <model>` — model for the active provider.
+- `--provider <gemini|custom>` — AI backend (default `gemini`).
+- `--base-url <url>` — base URL of a custom OpenAI-compatible endpoint.
+- `--from <YYYY-MM-DD>` / `--to <YYYY-MM-DD>` — custom date range (`--to` defaults to today).
+- `--prompt <file.txt>` — custom prompt template.
+- `--setup` — re-run the setup wizard (provider, model, API key, language).
+- `-l`, `--list` — print commits to stdout and exit.
+- `-g`, `--generate` — generate an AI summary, print to stdout, and exit.
+- `--debug` — show prompt-construction debug info in the summary.
+
+## Providers, models, and API keys
+
+- Default provider is Google Gemini; default model `gemini-3.1-flash-lite`.
+- Gemini key resolution: config `gemini_api_key` → `GEMINI_API_KEY` env var → interactive prompt.
+- Custom OpenAI-compatible providers: set `--provider custom`, a `--base-url`, and a `--model`. Key comes from `custom_api_key` in config or the `CUSTOM_API_KEY` env var.
+
+```sh
+export GEMINI_API_KEY=your-key-here
+export CUSTOM_API_KEY=sk-...
+
+# OpenRouter
+whathaveidone --provider custom --base-url https://openrouter.ai/api/v1 --model openai/gpt-4o-mini
+
+# OpenAI
+whathaveidone --provider custom --base-url https://api.openai.com/v1 --model gpt-4o-mini
+```
+
+## Custom prompt placeholders
+
+A `--prompt file.txt` template may use: `{from}`, `{to}`, `{project}` / `{projectname}`, `{interval}`, `{lang}`, `{commits}`.
+
+## Configuration
+
+TOML config at `~/.config/whid/whid.toml` (auto-created on first run). Settings layer: embedded blueprint defaults → user config → optional `whid.toml` in the current directory → CLI flags (highest precedence).
+
+Keys: `provider`, `gemini_model`, `gemini_api_key`, `prompt_for_api_key`, `custom_base_url`, `custom_model`, `custom_api_key`, `openrouter_api_key`, `vercel_api_key`, `openai_api_key`, `custom_prompt_path`, `lang`, `recent_generations` (default 20 — how many recent AI generations to keep in `~/.config/whid/overviews.json`, used by both the TUI and `--generate`).
+
+## TUI: three views
+
+- Commits (`1`) — repository sidebar + commit list. Toggle Timeframe/Selection mode with `s`.
+- Overviews (`2`) — master/detail browser of saved AI summaries (persist across restarts).
+- Stats (`3`) — full-screen dashboard: totals (commits, active days, avg per active day, busiest day, repos), commits per day / weekday / hour, per-repo and per-author breakdown, conventional-commit type breakdown (feat/fix/chore/…), and ticket-reference breakdown (e.g. ABC-123).
+
+## TUI: key bindings
+
+- Global: `1`/`2`/`3` switch view, `Tab`/`Shift+Tab` move focus, arrows or `h`/`j`/`k`/`l` navigate, `?` help, `q` quit.
+- Commits: `Space` detail pane, `s` list mode, `m` mark commit/repo, `[`/`]` timeframe, `u` mine/all authors, `d` detailed view, `a` generate overview.
+- Overviews: `Enter`/`c` copy, `r` regenerate, `x`/`Del` delete, `a` generate, `Esc` back.
+- Stats: `[`/`]` timeframe, `w` week, `u` mine/all, `d` detailed breakdown.
+
+## Links
+
+- [Home](https://heroheman.github.io/whathaveidone/): project landing page.
+- [Documentation](https://heroheman.github.io/whathaveidone/docs.html): full usage docs with examples.
+- [GitHub repository](https://github.com/heroheman/whathaveidone): source, issues, README.
+- [crates.io package](https://crates.io/crates/whathaveidone): install via `cargo install whathaveidone`.
