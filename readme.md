@@ -23,6 +23,10 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 - Mark individual commits with `m`, or bulk-mark a whole repo's commits from the sidebar, then summarize just the selection
 - Compact, responsive layout with a top bar, a focus ring, and a context-aware footer
 - Built-in `?` help overlay listing every key
+- **First-run setup wizard** (re-run anytime with `--setup`) that picks your provider, model, API key, and language — Gemini, OpenRouter, the Vercel AI Gateway, OpenAI, or any OpenAI-compatible endpoint
+- **Direct / non-interactive mode**: `--list` prints the commits and `--generate` prints an AI summary straight to stdout — pipeable into files, `pbcopy`, or other tools
+- Stats dashboard also breaks commits down by **conventional-commit type** (`feat` / `fix` / `chore` / …) and by **ticket reference** (e.g. `ABC-123`)
+- Recent AI generations persist to a history store, capped by `recent_generations` (default 20) — shared by the TUI and `--generate`
 
 ---
 
@@ -37,21 +41,34 @@ A terminal tool to summarize your Git commit history for daily standups, using A
 cargo install whathaveidone
 ```
 
-### Set up your API key
+### First-run setup wizard
 
-**Gemini (default):**
+The first time you launch `whathaveidone`, an interactive setup wizard walks you through:
+
+1. **Provider** — Gemini (recommended), OpenRouter, the Vercel AI Gateway, OpenAI, or a generic OpenAI-compatible endpoint. Picking a gateway fills in the right base URL automatically.
+2. **Model** — a short, curated list of sensible, cheap-and-fast models for the chosen provider, plus a "type it yourself" option.
+3. **API key** — stored per provider, so switching providers later recalls the right key.
+4. **Language** — the default language for summaries.
+
+Your answers are written to `~/.config/whid/whid.toml`. Re-run the wizard anytime to reconfigure:
+
 ```sh
-export GEMINI_API_KEY=your-key-here
+whathaveidone --setup
 ```
-On first run, if no key is found, the app also offers to save one to `~/.config/whid/whid.toml`.
 
-**Custom OpenAI-compatible providers:**
+### Setting the API key manually
+
+If you'd rather skip the wizard, set a key via environment variable:
+
 ```sh
+# Gemini (default)
+export GEMINI_API_KEY=your-key-here
+
+# …or any OpenAI-compatible provider
 export CUSTOM_API_KEY=your-key-here
 ```
-You can also store the key directly in your config as `custom_api_key`.
 
-Add the relevant `export` line to your shell profile (e.g. `~/.zshrc`) to make it persistent across terminal sessions.
+You can also store keys directly in your config (`gemini_api_key`, `custom_api_key`, or the per-provider stores the wizard uses). Add the relevant `export` line to your shell profile (e.g. `~/.zshrc`) to make it persistent across sessions.
 
 ---
 
@@ -77,30 +94,44 @@ Here's an example of the `whid.toml` file and the available settings:
 provider = "gemini"
 
 # The default Gemini model to use for summaries (when provider = "gemini").
-# This can be overridden by the --model command-line flag.
+# Can be overridden by the --model command-line flag.
 gemini_model = "gemini-3.1-flash-lite"
+
+# Your Gemini API key. If empty, the GEMINI_API_KEY env var is used instead.
+gemini_api_key = ""
+
+# Set to false to disable the startup prompt for the API key.
+prompt_for_api_key = true
 
 # --- Custom OpenAI-compatible provider settings (used when provider = "custom") ---
 # Base URL of the endpoint, e.g. https://openrouter.ai/api/v1 or https://api.openai.com/v1.
 # Can be overridden by the --base-url command-line flag.
-custom_base_url = ""
+custom_base_url = "https://openrouter.ai/api/v1"
 
 # Model name for the custom provider, e.g. "openai/gpt-4o-mini".
 # Can be overridden by the --model command-line flag.
-custom_model = ""
+custom_model = "google/gemini-3.1-flash-lite"
 
-# API key for the custom provider.
-# If empty, the CUSTOM_API_KEY environment variable is used instead.
+# API key for the custom provider. If empty, CUSTOM_API_KEY is used instead.
 custom_api_key = ""
 
+# Per-provider key stores the setup wizard fills in, so switching providers
+# later recalls the right key.
+openrouter_api_key = ""
+vercel_api_key = ""
+openai_api_key = ""
+
 # Optional: Path to a custom prompt template file.
-# If provided, this file will be used for AI summaries.
-# This can be overridden by the --prompt command-line flag.
-custom_prompt_path = "path/to/your/prompt.txt"
+# Can be overridden by the --prompt command-line flag.
+custom_prompt_path = ""
 
 # Default language for the AI summary.
 # Can be overridden by the --lang command-line flag.
 lang = "english"
+
+# How many of the most recent AI generations to keep in the history store
+# (~/.config/whid/overviews.json). Applies to the TUI and direct --generate mode.
+recent_generations = 20
 ```
 
 ---
@@ -114,13 +145,30 @@ whathaveidone
 whid
 ```
 
+### Direct / non-interactive mode
+
+Two flags skip the TUI entirely and print to stdout, so you can pipe the output into files, the clipboard, or other tools (great for scripts and cron jobs):
+
+```sh
+# Print the raw commits (grouped per repo with a "## name" header) and exit
+whathaveidone --list
+whathaveidone -l week              # last week's commits
+
+# Generate the AI summary, print it, and exit
+whathaveidone --generate
+whathaveidone -g week --lang german > standup.md
+whathaveidone -g | pbcopy          # straight to the clipboard (macOS)
+```
+
+Both honour the same timeframe argument, `--from` / `--to`, `--lang`, `--provider`, and `--model` flags as the TUI. In direct mode the interactive setup wizard and API-key prompt are skipped so the piped output stays clean — a missing key or provider error is written to stderr with a non-zero exit code instead. A successful `--generate` is still saved to your overview history (capped by `recent_generations`).
+
 ### Views & navigation
 
 The app has three top-level views and one consistent key model that separates *which view* you're in from *which pane* has focus:
 
 - **Commits** (`1`) — the sidebar of repositories plus the commit list. Switch the list between **Timeframe** and **Selection** mode with `s`.
 - **Overviews** (`2`) — a master/detail browser of past AI summaries (dimmed until you generate one). The left list holds every saved overview with its creation metadata; the right pane shows the full text.
-- **Stats** (`3`) — a full-screen dashboard summarizing the commits in the current timeframe: commits per day, by weekday and by hour, your busiest day, and a per-repository and per-author breakdown. Press `u` to toggle mine / all authors and `d` for a detailed breakdown.
+- **Stats** (`3`) — a full-screen dashboard summarizing the commits in the current timeframe: totals (commits, active days, average per active day, busiest day, repos), commits per day, by weekday and by hour, a per-repository and per-author breakdown, plus a **conventional-commit type** breakdown (`feat` / `fix` / `chore` / …) and a **ticket** breakdown (references like `ABC-123`, with how many commits carry one). Press `u` to toggle mine / all authors and `d` for a detailed breakdown.
 
 Everywhere: `Tab` / `Shift+Tab` move focus between panes, arrows or `h j k l` navigate and scroll within the focused pane, `?` toggles a help overlay listing every key, and `q` quits.
 
