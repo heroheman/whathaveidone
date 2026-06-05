@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>whathaveidone — Documentation</title>
+<meta name="description" content="Documentation and usage for whathaveidone: installation, setup, providers, direct mode, configuration, and keyboard shortcuts.">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#161922;
+    --panel2:#1b1f29;
+    --border:#262b36;
+    --border2:#323845;
+    --fg:#dde1e8;
+    --muted:#8a93a3;
+    --faint:#5d6675;
+    --accent:#3ddc6f;
+    --accent-ink:#0a1f12;
+    --amber:#ffb454;
+    --link:#7fd0ff;
+    --code-bg:#10131a;
+    --sidebar-w:248px;
+    --header-h:56px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);color:var(--fg);
+    font-family:'Inter',system-ui,sans-serif;
+    line-height:1.65;font-size:15px;
+    -webkit-font-smoothing:antialiased;
+  }
+  code,kbd,pre{font-family:'JetBrains Mono',ui-monospace,monospace}
+  a{color:var(--link);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  /* ---------- header ---------- */
+  header.top{
+    position:sticky;top:0;z-index:30;height:var(--header-h);
+    display:flex;align-items:center;gap:16px;
+    padding:0 20px;border-bottom:1px solid var(--border);
+    background:rgba(15,17,21,.9);backdrop-filter:blur(8px);
+  }
+  header.top .brand{font-family:'JetBrains Mono';font-weight:700;color:var(--fg);font-size:15px}
+  header.top .brand .c{color:var(--accent)}
+  header.top .brand:hover{text-decoration:none}
+  header.top .sp{flex:1}
+  header.top nav a{color:var(--muted);font-size:13.5px;margin-left:18px}
+  header.top nav a:hover{color:var(--fg);text-decoration:none}
+  .menu-btn{display:none;background:none;border:1px solid var(--border2);color:var(--fg);
+    border-radius:7px;padding:5px 10px;font-size:13px;cursor:pointer}
+
+  /* ---------- layout ---------- */
+  .layout{display:grid;grid-template-columns:var(--sidebar-w) minmax(0,1fr);max-width:1180px;margin:0 auto}
+
+  /* ---------- sidebar ---------- */
+  aside{
+    position:sticky;top:var(--header-h);align-self:start;
+    height:calc(100vh - var(--header-h));overflow-y:auto;
+    border-right:1px solid var(--border);padding:22px 14px 40px;
+  }
+  aside .group{margin-bottom:18px}
+  aside .group-t{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--faint);
+    font-weight:700;padding:0 10px;margin-bottom:6px}
+  aside a{display:block;color:var(--muted);font-size:13.5px;padding:5px 10px;border-radius:7px;
+    border-left:2px solid transparent}
+  aside a:hover{color:var(--fg);background:var(--panel);text-decoration:none}
+  aside a.active{color:var(--accent);background:var(--panel);border-left-color:var(--accent);font-weight:500}
+
+  /* ---------- content ---------- */
+  main{padding:34px 40px 100px;min-width:0}
+  main .intro{color:var(--muted);font-size:16px;max-width:680px;margin-bottom:8px}
+  section{padding-top:26px;margin-top:14px;border-top:1px solid var(--border);max-width:760px}
+  section:first-of-type{border-top:none;margin-top:0}
+  h1{font-size:30px;font-weight:700;letter-spacing:-.02em;margin-bottom:10px}
+  h2{font-size:21px;font-weight:700;letter-spacing:-.01em;margin-bottom:10px;scroll-margin-top:72px}
+  h3{font-size:15.5px;font-weight:600;margin:20px 0 8px}
+  p{margin-bottom:12px;color:var(--fg)}
+  p.lead,li{color:var(--fg)}
+  ul,ol{margin:0 0 14px 22px}
+  li{margin-bottom:5px}
+  section .note{
+    border-left:3px solid var(--amber);background:rgba(255,180,84,.06);
+    padding:10px 14px;border-radius:0 8px 8px 0;color:var(--muted);font-size:14px;margin:14px 0;
+  }
+  section .note b{color:var(--fg)}
+  strong{color:var(--fg)}
+  em{color:var(--muted)}
+
+  /* inline code */
+  p code,li code,td code,h3 code{
+    background:var(--panel2);border:1px solid var(--border);border-radius:5px;
+    padding:1px 6px;font-size:12.5px;color:var(--accent);
+  }
+
+  /* ---------- code blocks ---------- */
+  .code{position:relative;margin:14px 0}
+  .code pre{
+    background:var(--code-bg);border:1px solid var(--border);border-radius:9px;
+    padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.7;color:var(--fg);
+  }
+  .code .cmt{color:var(--faint)}
+  .code .copy{
+    position:absolute;top:8px;right:8px;
+    background:var(--panel2);border:1px solid var(--border2);color:var(--muted);
+    border-radius:6px;padding:3px 9px;font-size:11px;cursor:pointer;font-family:'JetBrains Mono';
+    opacity:0;transition:opacity .15s,color .15s,border-color .15s;
+  }
+  .code:hover .copy{opacity:1}
+  .code .copy:hover{color:var(--accent);border-color:var(--accent)}
+  .code .copy.done{color:var(--accent);border-color:var(--accent);opacity:1}
+
+  /* ---------- tables ---------- */
+  .tbl{border:1px solid var(--border);border-radius:9px;overflow:hidden;margin:14px 0;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{text-align:left;padding:9px 13px;border-bottom:1px solid var(--border);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  th{background:var(--panel);color:var(--faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+  td:first-child{white-space:nowrap}
+  td code{color:var(--accent)}
+  td .muted{color:var(--muted)}
+
+  /* keys */
+  kbd{display:inline-block;background:var(--panel2);border:1px solid var(--border2);
+    border-bottom-width:2px;border-radius:5px;padding:1px 7px;font-size:11.5px;color:var(--fg);margin:0 1px}
+
+  /* ---------- responsive ---------- */
+  #backdrop{display:none}
+  @media(max-width:880px){
+    .layout{grid-template-columns:1fr}
+    .menu-btn{display:inline-block}
+    aside{
+      position:fixed;top:var(--header-h);left:0;bottom:0;width:280px;z-index:40;
+      background:var(--bg);height:auto;transform:translateX(-100%);transition:transform .2s ease;
+    }
+    aside.open{transform:none}
+    #backdrop.show{display:block;position:fixed;inset:var(--header-h) 0 0 0;background:rgba(0,0,0,.5);z-index:35}
+    main{padding:26px 20px 80px}
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <button class="menu-btn" id="menuBtn" aria-label="Toggle menu">☰ Menu</button>
+  <a class="brand" href="index.html"><span class="c">❯</span> whathaveidone</a>
+  <span class="sp"></span>
+  <nav>
+    <a href="index.html">Home</a>
+    <a href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://crates.io/crates/whathaveidone" target="_blank" rel="noopener">crates.io</a>
+  </nav>
+</header>
+
+<div id="backdrop"></div>
+
+<div class="layout">
+  <aside id="sidebar">
+    <div class="group">
+      <div class="group-t">Getting started</div>
+      <a href="#overview">Overview</a>
+      <a href="#install">Installation</a>
+      <a href="#quickstart">Quick start</a>
+      <a href="#setup">Setup wizard</a>
+      <a href="#api-keys">API keys</a>
+      <a href="#providers">Providers &amp; models</a>
+    </div>
+    <div class="group">
+      <div class="group-t">Usage</div>
+      <a href="#running">Running &amp; views</a>
+      <a href="#intervals">Time intervals</a>
+      <a href="#dates">Custom date range</a>
+      <a href="#direct">Direct mode</a>
+      <a href="#language">Language</a>
+      <a href="#prompts">Custom prompts</a>
+      <a href="#detailed">Detailed view</a>
+      <a href="#stats">Stats dashboard</a>
+    </div>
+    <div class="group">
+      <div class="group-t">Reference</div>
+      <a href="#shortcuts">Keyboard shortcuts</a>
+      <a href="#cli">CLI flags</a>
+      <a href="#config">Configuration</a>
+    </div>
+  </aside>
+
+  <main>
+    <h1>Documentation</h1>
+    <p class="intro">A terminal tool that scans your Git repositories, groups recent commits by day &amp; topic, and turns them into a ready-to-read standup summary with AI — Google Gemini out of the box, or any OpenAI-compatible API.</p>
+
+    <section id="overview">
+      <h2>Overview</h2>
+      <p><strong>whathaveidone</strong> (short alias <code>whid</code>) is a Rust terminal UI. It finds every Git repository below the current directory, lists their recent commits grouped by time and repo, and can summarize them for your daily standup. It has three views — <strong>Commits</strong>, <strong>Overviews</strong> (saved AI summaries), and a <strong>Stats</strong> dashboard — plus a non-interactive mode that prints straight to stdout.</p>
+    </section>
+
+    <section id="install">
+      <h2>Installation</h2>
+      <p>You need <a href="https://rustup.rs/" target="_blank" rel="noopener">Rust</a> to build, and an API key for your chosen provider.</p>
+      <div class="code"><pre>cargo install whathaveidone</pre></div>
+      <p>This installs two binaries: <code>whathaveidone</code> and the short alias <code>whid</code>.</p>
+    </section>
+
+    <section id="quickstart">
+      <h2>Quick start</h2>
+      <p>Run it inside any folder that contains Git repositories:</p>
+      <div class="code"><pre><span class="cmt"># today's commits across all repos below ./</span>
+whathaveidone
+
+<span class="cmt"># last week, summarized in German</span>
+whathaveidone week --lang german</pre></div>
+      <p>On the very first launch, an interactive <a href="#setup">setup wizard</a> helps you pick a provider, model, API key, and language. Inside the app, press <kbd>a</kbd> to generate an AI overview and <kbd>?</kbd> for the help overlay.</p>
+    </section>
+
+    <section id="setup">
+      <h2>Setup wizard</h2>
+      <p>The first time you launch the app, a wizard walks you through four steps:</p>
+      <ol>
+        <li><strong>Provider</strong> — Gemini (recommended), OpenRouter, the Vercel AI Gateway, OpenAI, or a generic OpenAI-compatible endpoint. Picking a gateway fills in the right base URL automatically.</li>
+        <li><strong>Model</strong> — a short, curated list of cheap-and-fast models for that provider, plus a "type it yourself" option.</li>
+        <li><strong>API key</strong> — stored per provider, so switching later recalls the right key.</li>
+        <li><strong>Language</strong> — the default language for summaries.</li>
+      </ol>
+      <p>Answers are written to <code>~/.config/whid/whid.toml</code>. Re-run the wizard anytime to reconfigure:</p>
+      <div class="code"><pre>whathaveidone --setup</pre></div>
+    </section>
+
+    <section id="api-keys">
+      <h2>API keys</h2>
+      <p>If you'd rather skip the wizard, set a key via environment variable:</p>
+      <div class="code"><pre><span class="cmt"># Gemini (default)</span>
+export GEMINI_API_KEY=your-key-here
+
+<span class="cmt"># …or any OpenAI-compatible provider</span>
+export CUSTOM_API_KEY=your-key-here</pre></div>
+      <p>Add the relevant line to your shell profile (e.g. <code>~/.zshrc</code>) to persist it. You can also store keys directly in the config (<code>gemini_api_key</code>, <code>custom_api_key</code>, or the per-provider stores the wizard uses). Resolution order for Gemini: config <code>gemini_api_key</code> → <code>GEMINI_API_KEY</code> → interactive prompt.</p>
+      <div class="note">Get a Gemini key at <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener">aistudio.google.com</a>, or use any OpenAI-compatible service such as <a href="https://openrouter.ai/" target="_blank" rel="noopener">OpenRouter</a>.</div>
+    </section>
+
+    <section id="providers">
+      <h2>Providers &amp; models</h2>
+      <p>By default the app uses Google <strong>Gemini</strong>. Switch to any <strong>OpenAI-compatible</strong> API by setting <code>provider = "custom"</code> in your config, or with <code>--provider custom</code>.</p>
+      <h3>Gemini model</h3>
+      <div class="code"><pre><span class="cmt"># override the default gemini-3.1-flash-lite</span>
+whathaveidone --model gemini-2.5-flash</pre></div>
+      <h3>Custom OpenAI-compatible provider</h3>
+      <div class="code"><pre><span class="cmt"># OpenRouter</span>
+export CUSTOM_API_KEY=sk-or-...
+whathaveidone --provider custom \
+  --base-url https://openrouter.ai/api/v1 \
+  --model openai/gpt-4o-mini
+
+<span class="cmt"># OpenAI</span>
+export CUSTOM_API_KEY=sk-...
+whathaveidone --provider custom \
+  --base-url https://api.openai.com/v1 \
+  --model gpt-4o-mini</pre></div>
+      <p>The key comes from <code>custom_api_key</code> in the config or the <code>CUSTOM_API_KEY</code> environment variable. The active provider and model are shown while waiting for the AI response (and in <code>--debug</code> output).</p>
+    </section>
+
+    <section id="running">
+      <h2>Running &amp; views</h2>
+      <div class="code"><pre>whathaveidone   <span class="cmt"># or: whid</span></pre></div>
+      <p>The app has three top-level views; the key model separates <em>which view</em> you're in from <em>which pane</em> has focus:</p>
+      <ul>
+        <li><strong>Commits</strong> (<kbd>1</kbd>) — repository sidebar plus the commit list. Toggle the list between <strong>Timeframe</strong> and <strong>Selection</strong> mode with <kbd>s</kbd>.</li>
+        <li><strong>Overviews</strong> (<kbd>2</kbd>) — a master/detail browser of past AI summaries (dimmed until you generate one). They persist to disk and survive restarts.</li>
+        <li><strong>Stats</strong> (<kbd>3</kbd>) — a full-screen <a href="#stats">dashboard</a>.</li>
+      </ul>
+      <p>Everywhere: <kbd>Tab</kbd> / <kbd>Shift+Tab</kbd> move focus, arrows or <kbd>h</kbd> <kbd>j</kbd> <kbd>k</kbd> <kbd>l</kbd> navigate, <kbd>?</kbd> toggles help, <kbd>q</kbd> quits. Press <kbd>a</kbd> to generate an AI overview.</p>
+    </section>
+
+    <section id="intervals">
+      <h2>Time intervals</h2>
+      <p>Cycle the window live with <kbd>[</kbd> / <kbd>]</kbd>, or pass a start interval as an argument:</p>
+      <div class="code"><pre>whathaveidone            <span class="cmt"># today / 24h (default)</span>
+whathaveidone 48
+whathaveidone yesterday  <span class="cmt"># or 72</span>
+whathaveidone week
+whathaveidone month</pre></div>
+    </section>
+
+    <section id="dates">
+      <h2>Custom date range</h2>
+      <p>Use <code>--from</code> and <code>--to</code> (format <code>YYYY-MM-DD</code>). If <code>--to</code> is omitted it defaults to today.</p>
+      <div class="code"><pre>whathaveidone --from 2026-01-01 --to 2026-01-31</pre></div>
+    </section>
+
+    <section id="direct">
+      <h2>Direct / non-interactive mode</h2>
+      <p>Two flags skip the TUI and print to stdout, so you can pipe the output into files, the clipboard, or other tools (great for scripts and cron jobs):</p>
+      <div class="code"><pre><span class="cmt"># raw commits, grouped per repo with a "## name" header</span>
+whathaveidone --list
+whathaveidone -l week
+
+<span class="cmt"># generate the AI summary, print it, and exit</span>
+whathaveidone --generate
+whathaveidone -g week --lang german > standup.md
+whathaveidone -g | pbcopy            <span class="cmt"># straight to the clipboard (macOS)</span></pre></div>
+      <p>Both honour the same timeframe argument and the <code>--from</code> / <code>--to</code>, <code>--lang</code>, <code>--provider</code>, and <code>--model</code> flags.</p>
+      <div class="note">In direct mode the setup wizard and key prompt are skipped so piped output stays clean — a missing key or provider error is written to <b>stderr</b> with a non-zero exit code. A successful <code>--generate</code> is still saved to your overview history.</div>
+    </section>
+
+    <section id="language">
+      <h2>Language</h2>
+      <p>Set the summary language with <code>--lang</code>. The translation is done by the model itself; the flag always overrides the config value.</p>
+      <div class="code"><pre>whathaveidone --lang german
+whathaveidone --lang english   <span class="cmt"># default</span></pre></div>
+    </section>
+
+    <section id="prompts">
+      <h2>Custom prompts</h2>
+      <p>Provide your own template with <code>--prompt &lt;file.txt&gt;</code>. Placeholders are filled automatically; if the file can't be read, the default prompt is used.</p>
+      <div class="code"><pre>whathaveidone --prompt myprompt.txt</pre></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Placeholder</th><th>Replaced with</th></tr></thead>
+        <tbody>
+          <tr><td><code>{from}</code></td><td>Start date (YYYY-MM-DD)</td></tr>
+          <tr><td><code>{to}</code></td><td>End date (YYYY-MM-DD)</td></tr>
+          <tr><td><code>{project}</code> / <code>{projectname}</code></td><td>Project name</td></tr>
+          <tr><td><code>{interval}</code></td><td>Interval label (e.g. "week")</td></tr>
+          <tr><td><code>{lang}</code></td><td>Language</td></tr>
+          <tr><td><code>{commits}</code></td><td>The commit data to summarize</td></tr>
+        </tbody>
+      </table></div>
+      <p>The <code>--prompt</code> flag overrides <code>custom_prompt_path</code> from your config.</p>
+    </section>
+
+    <section id="detailed">
+      <h2>Detailed commit view</h2>
+      <p>Press <kbd>d</kbd> in the commit list to toggle a multi-line, <code>git log</code>-style view showing the full commit body and author for each commit.</p>
+      <div class="note">The detailed view is best for smaller datasets (shorter timeframes or a single repo). For large repos or long timeframes the output may be too big for the model to summarize well.</div>
+    </section>
+
+    <section id="stats">
+      <h2>Stats dashboard</h2>
+      <p>Reach it with <kbd>3</kbd>. It summarizes the commits in the current timeframe:</p>
+      <ul>
+        <li><strong>Totals</strong> — commits, active days, average per active day, busiest day, repos.</li>
+        <li><strong>Commits per day</strong>, <strong>per weekday</strong>, and <strong>per hour</strong> (0–23).</li>
+        <li><strong>Per repo</strong> and <strong>top authors</strong>.</li>
+        <li><strong>Commit types</strong> — conventional-commit breakdown (<code>feat</code> / <code>fix</code> / <code>chore</code> / …).</li>
+        <li><strong>Tickets</strong> — references like <code>ABC-123</code>, with how many commits carry one and the most frequent.</li>
+      </ul>
+      <p>The dashboard is read-only; only the timeframe (<kbd>[</kbd> <kbd>]</kbd> <kbd>w</kbd>) and filters (<kbd>u</kbd> mine/all, <kbd>d</kbd> detailed) are live and recompute the charts.</p>
+    </section>
+
+    <section id="shortcuts">
+      <h2>Keyboard shortcuts</h2>
+      <p>Press <kbd>?</kbd> at any time for an in-app overlay of every key.</p>
+      <h3>Global</h3>
+      <div class="tbl"><table><tbody>
+        <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Switch view (Commits / Overviews / Stats)</td></tr>
+        <tr><td><kbd>Tab</kbd> <kbd>⇧Tab</kbd></td><td>Move focus between panes</td></tr>
+        <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>h</kbd> <kbd>l</kbd></td><td>Move focus left / right</td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd> / <kbd>j</kbd> <kbd>k</kbd></td><td>Navigate / scroll the focused pane</td></tr>
+        <tr><td><kbd>?</kbd></td><td>Toggle the help overlay</td></tr>
+        <tr><td><kbd>q</kbd></td><td>Quit</td></tr>
+      </tbody></table></div>
+      <h3>Commits view</h3>
+      <div class="tbl"><table><tbody>
+        <tr><td><kbd>Space</kbd></td><td>Open / close the detail pane</td></tr>
+        <tr><td><kbd>s</kbd></td><td>Toggle list mode (Timeframe / Selection)</td></tr>
+        <tr><td><kbd>m</kbd></td><td>Mark a commit — or a whole repo from the sidebar</td></tr>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Previous / next timeframe</td></tr>
+        <tr><td><kbd>u</kbd></td><td>Toggle mine / all authors</td></tr>
+        <tr><td><kbd>d</kbd></td><td>Toggle detailed commit view</td></tr>
+        <tr><td><kbd>a</kbd></td><td>Generate an AI overview</td></tr>
+      </tbody></table></div>
+      <h3>Overviews view</h3>
+      <div class="tbl"><table><tbody>
+        <tr><td><kbd>Enter</kbd> <kbd>c</kbd></td><td>Copy the selected overview to the clipboard</td></tr>
+        <tr><td><kbd>r</kbd></td><td>Regenerate the last overview</td></tr>
+        <tr><td><kbd>x</kbd> <kbd>Del</kbd></td><td>Delete the selected overview (confirm y/n)</td></tr>
+        <tr><td><kbd>a</kbd></td><td>Generate a new overview</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Back to Commits (cancels generation)</td></tr>
+      </tbody></table></div>
+      <h3>Stats view</h3>
+      <div class="tbl"><table><tbody>
+        <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Previous / next timeframe</td></tr>
+        <tr><td><kbd>w</kbd></td><td>Jump to the week timeframe</td></tr>
+        <tr><td><kbd>u</kbd></td><td>Toggle mine / all authors</td></tr>
+        <tr><td><kbd>d</kbd></td><td>Toggle the detailed breakdown</td></tr>
+      </tbody></table></div>
+    </section>
+
+    <section id="cli">
+      <h2>CLI flags</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Flag</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>[timeframe]</code></td><td>Start window: <code>today</code>/<code>24</code>, <code>48</code>, <code>72</code>/<code>yesterday</code>, <code>week</code>, <code>month</code> <span class="muted">(default today)</span></td></tr>
+          <tr><td><code>--lang</code></td><td>Summary language</td></tr>
+          <tr><td><code>--model</code></td><td>Model for the active provider</td></tr>
+          <tr><td><code>--provider</code></td><td><code>gemini</code> (default) or <code>custom</code></td></tr>
+          <tr><td><code>--base-url</code></td><td>Base URL of a custom OpenAI-compatible endpoint</td></tr>
+          <tr><td><code>--from</code> / <code>--to</code></td><td>Custom date range (YYYY-MM-DD)</td></tr>
+          <tr><td><code>--prompt</code></td><td>Path to a custom prompt template</td></tr>
+          <tr><td><code>--setup</code></td><td>Re-run the setup wizard</td></tr>
+          <tr><td><code>-l</code>, <code>--list</code></td><td>Print commits to stdout and exit</td></tr>
+          <tr><td><code>-g</code>, <code>--generate</code></td><td>Generate a summary, print to stdout, and exit</td></tr>
+          <tr><td><code>--debug</code></td><td>Show prompt-construction debug info in the summary</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="config">
+      <h2>Configuration</h2>
+      <p>Settings layer from three sources, each overriding the last:</p>
+      <ol>
+        <li>the embedded blueprint (compiled-in defaults),</li>
+        <li>your user config at <code>~/.config/whid/whid.toml</code> (auto-created on first run; missing keys are backfilled),</li>
+        <li>an optional <code>whid.toml</code> in the current working directory.</li>
+      </ol>
+      <p>CLI flags override all of them.</p>
+      <div class="code"><pre><span class="cmt"># ~/.config/whid/whid.toml</span>
+provider = "gemini"
+gemini_model = "gemini-3.1-flash-lite"
+gemini_api_key = ""
+prompt_for_api_key = true
+
+custom_base_url = "https://openrouter.ai/api/v1"
+custom_model = "google/gemini-3.1-flash-lite"
+custom_api_key = ""
+
+<span class="cmt"># per-provider key stores the wizard fills in</span>
+openrouter_api_key = ""
+vercel_api_key = ""
+openai_api_key = ""
+
+custom_prompt_path = ""
+lang = "english"
+recent_generations = 20</pre></div>
+      <div class="tbl"><table>
+        <thead><tr><th>Setting</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>provider</code></td><td>AI backend: <code>"gemini"</code> (default) or <code>"custom"</code></td></tr>
+          <tr><td><code>gemini_model</code></td><td>Gemini model for summaries</td></tr>
+          <tr><td><code>gemini_api_key</code></td><td>Gemini key; falls back to <code>GEMINI_API_KEY</code></td></tr>
+          <tr><td><code>prompt_for_api_key</code></td><td>Set <code>false</code> to disable the startup key prompt</td></tr>
+          <tr><td><code>custom_base_url</code></td><td>Endpoint URL for a custom provider</td></tr>
+          <tr><td><code>custom_model</code></td><td>Model name for the custom provider</td></tr>
+          <tr><td><code>custom_api_key</code></td><td>Custom key; falls back to <code>CUSTOM_API_KEY</code></td></tr>
+          <tr><td><code>openrouter_api_key</code><br><code>vercel_api_key</code><br><code>openai_api_key</code></td><td>Per-provider key stores used by the setup wizard</td></tr>
+          <tr><td><code>custom_prompt_path</code></td><td>Path to a custom prompt template</td></tr>
+          <tr><td><code>lang</code></td><td>Default summary language</td></tr>
+          <tr><td><code>recent_generations</code></td><td>How many recent AI generations to keep in history (TUI + <code>--generate</code>)</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+  </main>
+</div>
+
+<script>
+  // copy buttons on every code block
+  document.querySelectorAll('.code').forEach(function(block){
+    var pre = block.querySelector('pre');
+    if(!pre) return;
+    var btn = document.createElement('button');
+    btn.className = 'copy';
+    btn.type = 'button';
+    btn.textContent = 'copy';
+    btn.addEventListener('click', function(){
+      navigator.clipboard.writeText(pre.innerText).then(function(){
+        btn.textContent = 'copied'; btn.classList.add('done');
+        setTimeout(function(){ btn.textContent = 'copy'; btn.classList.remove('done'); }, 1400);
+      });
+    });
+    block.appendChild(btn);
+  });
+
+  // mobile sidebar toggle
+  var sidebar = document.getElementById('sidebar');
+  var backdrop = document.getElementById('backdrop');
+  var menuBtn = document.getElementById('menuBtn');
+  function closeMenu(){ sidebar.classList.remove('open'); backdrop.classList.remove('show'); }
+  menuBtn.addEventListener('click', function(){ sidebar.classList.toggle('open'); backdrop.classList.toggle('show'); });
+  backdrop.addEventListener('click', closeMenu);
+
+  // scrollspy: highlight the current section in the sidebar
+  var links = Array.prototype.slice.call(document.querySelectorAll('aside a[href^="#"]'));
+  var map = {};
+  links.forEach(function(a){ map[a.getAttribute('href').slice(1)] = a; });
+  var spy = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if(e.isIntersecting){
+        links.forEach(function(a){ a.classList.remove('active'); });
+        var a = map[e.target.id];
+        if(a) a.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-64px 0px -70% 0px', threshold: 0 });
+  document.querySelectorAll('main section[id]').forEach(function(s){ spy.observe(s); });
+
+  // close mobile menu after clicking a link
+  links.forEach(function(a){ a.addEventListener('click', closeMenu); });
+</script>
+</body>
+</html>
