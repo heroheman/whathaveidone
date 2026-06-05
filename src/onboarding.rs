@@ -187,7 +187,13 @@ fn welcome(is_reconfigure: bool) -> anyhow::Result<bool> {
     stdout.flush()?;
 
     loop {
-        if let Event::Key(k) = read()? {
+        // Raw mode only around the read so arrow/escape keys arrive as key
+        // events instead of being echoed as `^[[A`; rendering stays in cooked
+        // mode so `println!` line endings work.
+        enable_raw_mode()?;
+        let ev = read()?;
+        disable_raw_mode()?;
+        if let Event::Key(k) = ev {
             if k.kind == KeyEventKind::Release {
                 continue;
             }
@@ -225,7 +231,12 @@ fn select(title: &str, options: &[&str]) -> anyhow::Result<Option<usize>> {
         );
         stdout.flush()?;
 
-        if let Event::Key(k) = read()? {
+        // Raw mode only around the read (see `welcome`), so the rendered menu
+        // above keeps proper line endings.
+        enable_raw_mode()?;
+        let ev = read()?;
+        disable_raw_mode()?;
+        if let Event::Key(k) = ev {
             if k.kind == KeyEventKind::Release {
                 continue;
             }
