@@ -305,8 +305,10 @@
       <div class="card"><span class="fi">✅</span><h4>Mark &amp; summarize</h4><p>Mark commits with <span class="kbd">m</span> or a whole repo, then summarize only the selection.</p></div>
       <div class="card"><span class="fi">🎛️</span><h4>Custom prompts</h4><p>Bring your own template with placeholders for project, interval &amp; language.</p></div>
       <div class="card"><span class="fi">🌍</span><h4>Any language</h4><p>Get the summary in English, German, or anything else via <span class="kbd">--lang</span>.</p></div>
-      <div class="card"><span class="fi">📊</span><h4>Stats dashboard</h4><p>Commits per day, by weekday &amp; hour, busiest day, per-repo / per-author.</p></div>
+      <div class="card"><span class="fi">📊</span><h4>Stats dashboard</h4><p>Per day, weekday &amp; hour, busiest day, per-repo / author — plus commit-type &amp; ticket breakdowns.</p></div>
       <div class="card"><span class="fi">⌨️</span><h4>Consistent keymap</h4><p>Home-row navigation, focus ring, and a built-in <span class="kbd">?</span> help overlay.</p></div>
+      <div class="card"><span class="fi">🚀</span><h4>Direct output</h4><p><span class="kbd">--list</span> and <span class="kbd">--generate</span> print to stdout — pipe into files, the clipboard, or cron jobs.</p></div>
+      <div class="card"><span class="fi">🧙</span><h4>Setup wizard</h4><p>First-run wizard picks provider, model, key &amp; language. Re-run anytime with <span class="kbd">--setup</span>.</p></div>
     </div>
   </section>
 
@@ -343,15 +345,35 @@
 <span class="cmt">#     installs the `whathaveidone` binary + a short `whid` alias</span>
 <span class="cmd">cargo</span> install whathaveidone
 
-<span class="cmt"># 2 · Set your API key (Gemini is the default)</span>
+<span class="cmt"># 2 · Run it — a first-run wizard sets up your</span>
+<span class="cmt">#     provider, model, API key &amp; language</span>
+<span class="cmd">whathaveidone</span>
+
+<span class="cmt"># prefer env vars? skip the wizard:</span>
 <span class="cmd">export</span> GEMINI_API_KEY=<span class="str">your-key-here</span>
 
-<span class="cmt"># 3 · Run it inside any project folder</span>
-<span class="cmt"># today's commits, all repos below ./</span>
-<span class="cmd">whathaveidone</span>
+<span class="cmt"># reconfigure anytime</span>
+<span class="cmd">whathaveidone</span> <span class="flg">--setup</span>
 
 <span class="cmt"># last week, summarized in German</span>
 <span class="cmd">whathaveidone</span> week <span class="flg">--lang</span> <span class="str">german</span></pre>
+    </div>
+  </section>
+
+  <!-- DIRECT MODE -->
+  <section class="sec fade d4a">
+    <div class="sec-h"><span class="hash">#</span><h2>Pipe it anywhere</h2><span class="rule"></span></div>
+    <p class="lead">Two flags skip the TUI and print straight to stdout — pipe into files, the clipboard, or cron jobs. A missing key or error goes to stderr with a non-zero exit, so piped output stays clean.</p>
+    <div class="term">
+      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">bash — direct mode</span></div>
+<pre><span class="cmt"># raw commits, grouped per repo</span>
+<span class="cmd">whathaveidone</span> <span class="flg">--list</span> week
+
+<span class="cmt"># AI summary → a file</span>
+<span class="cmd">whathaveidone</span> <span class="flg">--generate</span> week <span class="flg">--lang</span> <span class="str">german</span> &gt; standup.md
+
+<span class="cmt"># AI summary → the clipboard (macOS)</span>
+<span class="cmd">whathaveidone</span> <span class="flg">-g</span> | pbcopy</pre>
     </div>
   </section>
 
@@ -427,12 +449,14 @@
       <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">~/.config/whid/whid.toml</span></div>
 <pre><span class="cmd">provider</span> = <span class="str">"gemini"</span>
 <span class="cmd">gemini_model</span> = <span class="str">"gemini-3.1-flash-lite"</span>
+<span class="cmd">prompt_for_api_key</span> = <span class="flg">true</span>
 
-<span class="cmd">custom_base_url</span> = <span class="str">""</span>
-<span class="cmd">custom_model</span> = <span class="str">""</span>
+<span class="cmd">custom_base_url</span> = <span class="str">"https://openrouter.ai/api/v1"</span>
+<span class="cmd">custom_model</span> = <span class="str">"google/gemini-3.1-flash-lite"</span>
 <span class="cmd">custom_api_key</span> = <span class="str">""</span>
 
-<span class="cmd">lang</span> = <span class="str">"english"</span></pre>
+<span class="cmd">lang</span> = <span class="str">"english"</span>
+<span class="cmd">recent_generations</span> = <span class="flg">20</span></pre>
     </div>
     <div class="cfgwrap">
       <div class="cfgrow"><span class="cfgkey">provider</span><span class="desc">AI backend: <code>"gemini"</code> (default) or <code>"custom"</code> · override with <code>--provider</code></span></div>
@@ -442,6 +466,7 @@
       <div class="cfgrow"><span class="cfgkey">custom_api_key</span><span class="desc">API key for the custom provider; falls back to <code>CUSTOM_API_KEY</code></span></div>
       <div class="cfgrow"><span class="cfgkey">custom_prompt_path</span><span class="desc">Path to a custom prompt template · override with <code>--prompt</code></span></div>
       <div class="cfgrow"><span class="cfgkey">lang</span><span class="desc">Default summary language · override with <code>--lang</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">recent_generations</span><span class="desc">How many recent AI generations to keep in history (TUI + <code>--generate</code>)</span></div>
     </div>
   </section>
 
