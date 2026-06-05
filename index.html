@@ -78,6 +78,7 @@
   }
   .prompt-line{color:var(--green-dim);font-size:13px;margin-bottom:18px;word-break:break-word}
   .prompt-line .c{color:var(--green)}
+  .prompt-line .typed{color:var(--amber)}
   .blink{animation:blink 1.1s steps(1) infinite}
   @keyframes blink{50%{opacity:0}}
   h1.logo{
@@ -246,7 +247,7 @@
     <span class="path">~/projects — whathaveidone</span>
   </div>
   <header class="hero fade d1a">
-    <div class="prompt-line"><span class="c">$</span> whathaveidone <span class="blink">▋</span></div>
+    <div class="prompt-line"><span class="c">$</span> whathaveidone <span id="typed" class="typed"></span><span class="blink">▋</span></div>
     <h1 class="logo"><span class="caret">❯</span> whathaveidone</h1>
     <p class="tagline">A terminal tool that scans your <b>Git repositories</b>, groups recent commits by day &amp; topic, and turns them into a ready-to-read <b>standup summary</b> — powered by AI.</p>
     <p class="aliasnote">Run it as <code>whathaveidone</code> — or the short alias <code>whid</code>.</p>
@@ -453,5 +454,33 @@
   </footer>
 
 </div>
+
+<script>
+  // Typewriter on the hero prompt: cycle through the common arguments,
+  // typing and deleting each after `whathaveidone `.
+  (function(){
+    var el = document.getElementById('typed');
+    if (!el) return;
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) { el.textContent = 'today'; return; }
+    var words = ['today', 'yesterday', 'week', 'month', '--lang german'];
+    var wi = 0, ci = 0, deleting = false;
+    function tick(){
+      var w = words[wi];
+      if (!deleting){
+        ci++;
+        el.textContent = w.slice(0, ci);
+        if (ci === w.length){ deleting = true; return setTimeout(tick, 1500); }
+        return setTimeout(tick, 95);
+      } else {
+        ci--;
+        el.textContent = w.slice(0, ci);
+        if (ci === 0){ deleting = false; wi = (wi + 1) % words.length; return setTimeout(tick, 400); }
+        return setTimeout(tick, 45);
+      }
+    }
+    setTimeout(tick, 700);
+  })();
+</script>
 </body>
 </html>
