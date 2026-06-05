@@ -361,113 +361,16 @@
     </div>
   </section>
 
-  <!-- DIRECT MODE -->
+  <!-- DOCS CTA -->
   <section class="sec fade d4a">
-    <div class="sec-h"><span class="hash">#</span><h2>Pipe it anywhere</h2><span class="rule"></span></div>
-    <p class="lead">Two flags skip the TUI and print straight to stdout — pipe into files, the clipboard, or cron jobs. A missing key or error goes to stderr with a non-zero exit, so piped output stays clean.</p>
-    <div class="term">
-      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">bash — direct mode</span></div>
-<pre><span class="cmt"># raw commits, grouped per repo</span>
-<span class="cmd">whathaveidone</span> <span class="flg">--list</span> week
-
-<span class="cmt"># AI summary → a file</span>
-<span class="cmd">whathaveidone</span> <span class="flg">--generate</span> week <span class="flg">--lang</span> <span class="str">german</span> &gt; standup.md
-
-<span class="cmt"># AI summary → the clipboard (macOS)</span>
-<span class="cmd">whathaveidone</span> <span class="flg">-g</span> | pbcopy</pre>
-    </div>
-  </section>
-
-  <!-- TIME INTERVALS -->
-  <section class="sec fade d4a">
-    <div class="sec-h"><span class="hash">#</span><h2>Time intervals</h2><span class="rule"></span></div>
-    <p class="lead">Cycle live with <span class="key">[</span> / <span class="key">]</span>, or pass one to <code>whathaveidone</code> as an argument:</p>
-    <div class="pills">
-      <span class="pill"><b>today</b> · 24h</span>
-      <span class="pill"><b>48</b></span>
-      <span class="pill"><b>yesterday</b> · 72</span>
-      <span class="pill"><b>week</b></span>
-      <span class="pill"><b>month</b></span>
-      <span class="pill"><b>--from</b> 2026-01-01 <b>--to</b> 2026-01-31</span>
-    </div>
-  </section>
-
-  <!-- KEYMAP -->
-  <section class="sec fade d5a">
-    <div class="sec-h"><span class="hash">#</span><h2>Keyboard shortcuts</h2><span class="rule"></span></div>
-    <div class="keys">
-      <div class="kgroup">
-        <h5>Global</h5>
-        <div class="krow"><span class="key">1</span><span class="key">2</span><span class="key">3</span><span class="desc">Switch view · Commits / Overviews / Stats</span></div>
-        <div class="krow"><span class="key">h</span><span class="key">j</span><span class="key">k</span><span class="key">l</span><span class="desc">Navigate &amp; move focus</span></div>
-        <div class="krow"><span class="key">?</span><span class="desc">Toggle help overlay</span></div>
-        <div class="krow"><span class="key">q</span><span class="desc">Quit</span></div>
-      </div>
-      <div class="kgroup">
-        <h5>Commits view</h5>
-        <div class="krow"><span class="key">a</span><span class="desc">Generate an AI overview</span></div>
-        <div class="krow"><span class="key">m</span><span class="desc">Mark a commit or a whole repo</span></div>
-        <div class="krow"><span class="key">s</span><span class="desc">Toggle Timeframe / Selection mode</span></div>
-        <div class="krow"><span class="key">u</span><span class="desc">Toggle mine / all authors</span></div>
-        <div class="krow"><span class="key">d</span><span class="desc">Toggle detailed commit view</span></div>
-      </div>
-      <div class="kgroup">
-        <h5>Overviews view</h5>
-        <div class="krow"><span class="key">c</span><span class="desc">Copy overview to clipboard</span></div>
-        <div class="krow"><span class="key">r</span><span class="desc">Regenerate the last overview</span></div>
-        <div class="krow"><span class="key">x</span><span class="desc">Delete the selected overview</span></div>
-      </div>
-      <div class="kgroup">
-        <h5>Stats view</h5>
-        <div class="krow"><span class="key">[</span><span class="key">]</span><span class="desc">Previous / next timeframe</span></div>
-        <div class="krow"><span class="key">w</span><span class="desc">Jump to the week timeframe</span></div>
-        <div class="krow"><span class="key">d</span><span class="desc">Toggle the detailed breakdown</span></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- PROVIDERS -->
-  <section class="sec fade d6a">
-    <div class="sec-h"><span class="hash">#</span><h2>Bring your own model</h2><span class="rule"></span></div>
-    <div class="term">
-      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">bash — providers</span></div>
-<pre><span class="cmt"># Gemini is default — just override the model</span>
-<span class="cmd">whathaveidone</span> <span class="flg">--model</span> gemini-2.5-flash
-
-<span class="cmt"># OpenRouter / OpenAI / anything OpenAI-compatible</span>
-<span class="cmd">export</span> CUSTOM_API_KEY=<span class="str">sk-...</span>
-<span class="cmd">whathaveidone</span> <span class="flg">--provider</span> <span class="str">custom</span> \
-  <span class="flg">--base-url</span> <span class="str">https://api.openai.com/v1</span> \
-  <span class="flg">--model</span> <span class="str">gpt-4o-mini</span></pre>
-    </div>
-  </section>
-
-  <!-- CONFIG -->
-  <section class="sec fade d6a">
-    <div class="sec-h"><span class="hash">#</span><h2>Configure once, override anywhere</h2><span class="rule"></span></div>
-    <p class="lead">Settings layer from three sources, each overriding the last: the embedded blueprint, your user config at <code>~/.config/whid/whid.toml</code>, and an optional <code>whid.toml</code> in the current directory. CLI flags win over all of them.</p>
-    <div class="term">
-      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">~/.config/whid/whid.toml</span></div>
-<pre><span class="cmd">provider</span> = <span class="str">"gemini"</span>
-<span class="cmd">gemini_model</span> = <span class="str">"gemini-3.1-flash-lite"</span>
-<span class="cmd">prompt_for_api_key</span> = <span class="flg">true</span>
-
-<span class="cmd">custom_base_url</span> = <span class="str">"https://openrouter.ai/api/v1"</span>
-<span class="cmd">custom_model</span> = <span class="str">"google/gemini-3.1-flash-lite"</span>
-<span class="cmd">custom_api_key</span> = <span class="str">""</span>
-
-<span class="cmd">lang</span> = <span class="str">"english"</span>
-<span class="cmd">recent_generations</span> = <span class="flg">20</span></pre>
-    </div>
-    <div class="cfgwrap">
-      <div class="cfgrow"><span class="cfgkey">provider</span><span class="desc">AI backend: <code>"gemini"</code> (default) or <code>"custom"</code> · override with <code>--provider</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">gemini_model</span><span class="desc">Gemini model for summaries · override with <code>--model</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">custom_base_url</span><span class="desc">Endpoint URL for a custom provider, e.g. <code>https://openrouter.ai/api/v1</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">custom_model</span><span class="desc">Model name for the custom provider, e.g. <code>openai/gpt-4o-mini</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">custom_api_key</span><span class="desc">API key for the custom provider; falls back to <code>CUSTOM_API_KEY</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">custom_prompt_path</span><span class="desc">Path to a custom prompt template · override with <code>--prompt</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">lang</span><span class="desc">Default summary language · override with <code>--lang</code></span></div>
-      <div class="cfgrow"><span class="cfgkey">recent_generations</span><span class="desc">How many recent AI generations to keep in history (TUI + <code>--generate</code>)</span></div>
+    <div class="sec-h"><span class="hash">#</span><h2>Go deeper</h2><span class="rule"></span></div>
+    <p class="lead">Direct mode, time intervals, providers &amp; models, custom prompts, the full keymap, and every config option — it's all in the documentation.</p>
+    <div class="cta">
+      <a class="primary" href="docs.html">📖 Read the docs</a>
+      <a class="ghost" href="docs.html#direct">Direct mode</a>
+      <a class="ghost" href="docs.html#providers">Providers &amp; models</a>
+      <a class="ghost" href="docs.html#shortcuts">Keyboard shortcuts</a>
+      <a class="ghost" href="docs.html#config">Configuration</a>
     </div>
   </section>
 
