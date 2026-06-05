@@ -1,554 +1,457 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>whathaveidone — AI standups from your Git history</title>
-<meta name="description" content="A terminal tool that summarizes your Git commit history for daily standups using AI. Works with Google Gemini or any OpenAI-compatible API." />
-<meta name="color-scheme" content="dark" />
+<meta name="description" content="A terminal tool that scans your Git repositories, groups recent commits by day and topic, and turns them into a ready-to-read standup summary with AI. Works with Google Gemini or any OpenAI-compatible API.">
+<meta name="color-scheme" content="dark">
 
 <!-- Open Graph -->
-<meta property="og:title" content="whathaveidone — AI standups from your Git history" />
-<meta property="og:description" content="A Rust terminal UI that scans your repos, lists recent commits, and turns them into a standup summary with AI." />
-<meta property="og:type" content="website" />
-<meta property="og:url" content="https://heroheman.github.io/whathaveidone/" />
-<meta property="og:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png" />
+<meta property="og:title" content="whathaveidone — AI standups from your Git history">
+<meta property="og:description" content="A Rust terminal UI that scans your repos, lists recent commits, and turns them into a standup summary with AI.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://heroheman.github.io/whathaveidone/">
+<meta property="og:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png">
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
-
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg:        #0d1017;
-    --bg-soft:   #141925;
-    --bg-panel:  #1a2030;
-    --border:    #2a3243;
-    --fg:        #e4e9f2;
-    --fg-dim:    #9aa6bd;
-    --fg-faint:  #5d6b85;
-    --accent:    #7aa2f7;
-    --accent-2:  #bb9af7;
-    --green:     #9ece6a;
-    --yellow:    #e0af68;
-    --red:       #f7768e;
-    --radius:    14px;
-    --max:       1080px;
+  :root{
+    --bg:#0a0e0a;
+    --panel:#0f150f;
+    --panel2:#121a12;
+    --green:#3ddc6f;
+    --green-dim:#1f7a40;
+    --amber:#ffb454;
+    --cyan:#6fd3e0;
+    --magenta:#e06f9c;
+    --ink:#cfe8d4;
+    --muted:#6b8a72;
+    --line:#1e2a1e;
+    --glow:rgba(61,220,111,.35);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'JetBrains Mono',monospace;
+    line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+    overflow-x:hidden;
+  }
+  /* CRT scanline + grain overlay */
+  body::before{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:999;
+    background:repeating-linear-gradient(0deg,rgba(0,0,0,0) 0px,rgba(0,0,0,0) 2px,rgba(0,0,0,.18) 3px,rgba(0,0,0,0) 4px);
+    mix-blend-mode:multiply;opacity:.5;
+  }
+  body::after{
+    content:"";position:fixed;inset:0;pointer-events:none;z-index:998;
+    background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%);
+  }
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 80px}
+  a{color:var(--cyan)}
+
+  /* ---------- HEADER ---------- */
+  .topbar{
+    display:flex;align-items:center;gap:10px;
+    border:1px solid var(--line);border-bottom:none;
+    background:var(--panel2);
+    padding:10px 14px;border-radius:10px 10px 0 0;
+    font-size:12px;color:var(--muted);
+  }
+  .dot{width:11px;height:11px;border-radius:50%}
+  .d1{background:#e0625f}.d2{background:#e0b34f}.d3{background:#5fcf6f}
+  .topbar .path{margin-left:auto;letter-spacing:.04em}
+
+  .hero{
+    border:1px solid var(--line);
+    background:
+      radial-gradient(120% 140% at 80% -10%,rgba(61,220,111,.10),transparent 55%),
+      var(--panel);
+    border-radius:0 0 10px 10px;
+    padding:40px 30px 44px;
+    position:relative;overflow:hidden;
+  }
+  .prompt-line{color:var(--green-dim);font-size:13px;margin-bottom:18px;word-break:break-word}
+  .prompt-line .c{color:var(--green)}
+  .blink{animation:blink 1.1s steps(1) infinite}
+  @keyframes blink{50%{opacity:0}}
+  h1.logo{
+    font-size:clamp(30px,8vw,72px);
+    font-weight:800;letter-spacing:-.02em;line-height:.95;
+    color:var(--green);
+    text-shadow:0 0 22px var(--glow);
+    word-break:break-word;
+  }
+  h1.logo .caret{color:var(--amber);text-shadow:0 0 22px rgba(255,180,84,.4)}
+  .tagline{
+    margin-top:18px;font-size:clamp(15px,2.6vw,20px);color:var(--ink);max-width:640px;
+  }
+  .tagline b{color:var(--amber);font-weight:700}
+  .aliasnote{margin-top:14px;font-size:12px;color:var(--muted)}
+  .aliasnote code{color:var(--green)}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
+  .badge{
+    border:1px solid var(--green-dim);color:var(--green);
+    font-size:11px;padding:5px 11px;border-radius:999px;
+    background:rgba(61,220,111,.06);letter-spacing:.03em;
+  }
+  .cta{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px}
+  .cta a{
+    text-decoration:none;font-size:12px;font-weight:700;letter-spacing:.03em;
+    padding:9px 15px;border-radius:8px;border:1px solid var(--green-dim);transition:.2s;
+  }
+  .cta a.primary{background:var(--green);color:#06210f;border-color:var(--green)}
+  .cta a.ghost{color:var(--green);background:rgba(61,220,111,.06)}
+  .cta a:hover{transform:translateY(-2px)}
+
+  /* ---------- SECTION HEADERS ---------- */
+  .sec{margin-top:46px}
+  .sec-h{
+    display:flex;align-items:center;gap:12px;margin-bottom:20px;
+  }
+  .sec-h .hash{color:var(--green-dim);font-size:20px}
+  .sec-h h2{
+    font-size:clamp(18px,4vw,26px);font-weight:800;color:var(--ink);letter-spacing:-.01em;
+  }
+  .sec-h .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+  .lead{font-size:12.5px;color:var(--muted);margin-bottom:16px;max-width:640px}
+  .lead code{color:var(--cyan)}
+
+  /* ---------- PIPELINE ---------- */
+  .pipe{
+    display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+    border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--panel);
+  }
+  .step{padding:22px 16px;position:relative;border-right:1px dashed var(--line)}
+  .step:last-child{border-right:none}
+  .step .ico{font-size:30px;display:block;margin-bottom:10px;filter:drop-shadow(0 0 10px var(--glow))}
+  .step .n{font-size:11px;color:var(--green-dim);font-weight:700;letter-spacing:.1em}
+  .step h3{font-size:14px;color:var(--green);margin:6px 0 6px}
+  .step p{font-size:12px;color:var(--muted);line-height:1.5}
+  .step .arrow{
+    position:absolute;right:-9px;top:50%;transform:translateY(-50%);
+    color:var(--amber);font-size:16px;z-index:2;background:var(--bg);padding:2px;
+  }
+  .step:last-child .arrow{display:none}
+  @media(max-width:640px){
+    .pipe{grid-template-columns:1fr 1fr}
+    .step:nth-child(2) .arrow{display:none}
   }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  html { scroll-behavior: smooth; }
-
-  body {
-    font-family: 'Inter', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--fg);
-    line-height: 1.65;
-    -webkit-font-smoothing: antialiased;
-    background-image:
-      radial-gradient(800px 500px at 80% -10%, rgba(122,162,247,0.10), transparent 60%),
-      radial-gradient(700px 500px at 10% 0%, rgba(187,154,247,0.08), transparent 55%);
-    background-attachment: fixed;
+  /* ---------- FEATURE GRID ---------- */
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+  @media(max-width:560px){.grid{grid-template-columns:1fr}}
+  .card{
+    border:1px solid var(--line);border-radius:10px;background:var(--panel);
+    padding:16px 16px 18px;transition:.25s;
+    position:relative;overflow:hidden;
   }
+  .card:hover{border-color:var(--green-dim);transform:translateY(-3px);box-shadow:0 8px 26px rgba(0,0,0,.5)}
+  .card .fi{font-size:22px;margin-bottom:8px;display:block}
+  .card h4{color:var(--green);font-size:14px;margin-bottom:5px}
+  .card p{font-size:12px;color:var(--muted);line-height:1.5}
+  .card span.kbd{color:var(--amber)}
 
-  code, kbd, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; }
-
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-
-  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
-
-  /* ---------- nav ---------- */
-  nav {
-    position: sticky; top: 0; z-index: 50;
-    backdrop-filter: blur(12px);
-    background: rgba(13,16,23,0.72);
-    border-bottom: 1px solid var(--border);
+  /* ---------- SCREENSHOTS (compact, low-key) ---------- */
+  .shots{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  @media(max-width:640px){.shots{grid-template-columns:1fr 1fr}}
+  .shots figure{
+    border:1px solid var(--line);border-radius:9px;overflow:hidden;
+    background:#070b07;transition:.2s;margin:0;
   }
-  nav .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
-  .brand { font-family: 'JetBrains Mono'; font-weight: 700; font-size: 1.05rem; color: var(--fg); }
-  .brand .prompt { color: var(--green); }
-  .brand:hover { text-decoration: none; }
-  .nav-links { display: flex; gap: 26px; align-items: center; }
-  .nav-links a { color: var(--fg-dim); font-size: .92rem; font-weight: 500; }
-  .nav-links a:hover { color: var(--fg); text-decoration: none; }
-  .nav-gh {
-    border: 1px solid var(--border); padding: 7px 14px; border-radius: 8px;
-    color: var(--fg) !important;
-  }
-  .nav-gh:hover { border-color: var(--accent); background: var(--bg-soft); }
-  @media (max-width: 680px) { .nav-links a:not(.nav-gh) { display: none; } }
+  .shots figure:hover{border-color:var(--green-dim);transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.5)}
+  .shots a{display:block}
+  .shots img{display:block;width:100%;height:auto}
+  .shots figcaption{font-size:10.5px;color:var(--muted);padding:7px 9px;border-top:1px solid var(--line);line-height:1.4}
+  .shots figcaption b{color:var(--green);font-weight:700}
 
-  /* ---------- hero ---------- */
-  header { padding: 88px 0 64px; }
-  .badge {
-    display: inline-flex; align-items: center; gap: 8px;
-    font-family: 'JetBrains Mono'; font-size: .8rem; color: var(--fg-dim);
-    border: 1px solid var(--border); border-radius: 999px; padding: 5px 14px;
-    background: var(--bg-soft); margin-bottom: 26px;
+  /* ---------- TERMINAL BLOCK ---------- */
+  .term{
+    border:1px solid var(--line);border-radius:10px;background:#070b07;
+    margin-top:6px;overflow:hidden;
   }
-  .badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); }
-  h1 {
-    font-size: clamp(2.4rem, 6vw, 4rem); font-weight: 800; line-height: 1.05;
-    letter-spacing: -0.03em; margin-bottom: 20px;
+  .term .bar{
+    display:flex;gap:7px;align-items:center;padding:9px 12px;
+    background:var(--panel2);border-bottom:1px solid var(--line);
   }
-  h1 .grad {
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
+  .term .bar .t{margin-left:8px;font-size:11px;color:var(--muted)}
+  .term pre{
+    padding:16px 18px;font-size:12.5px;line-height:1.7;
+    font-family:'JetBrains Mono',monospace;color:var(--ink);
+    /* wrap long commands instead of overflowing on small screens */
+    white-space:pre-wrap;
+    overflow-wrap:anywhere;
   }
-  .lede { font-size: clamp(1.05rem, 2vw, 1.3rem); color: var(--fg-dim); max-width: 640px; margin-bottom: 34px; }
+  .cmt{color:var(--muted)}
+  .cmd{color:var(--green)}
+  .flg{color:var(--amber)}
+  .str{color:var(--cyan)}
 
-  .cta-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 9px;
-    font-weight: 600; font-size: .98rem; padding: 12px 22px; border-radius: 10px;
-    border: 1px solid transparent; transition: transform .12s ease, box-shadow .12s ease;
+  /* ---------- KEYMAP ---------- */
+  .keys{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  @media(max-width:560px){.keys{grid-template-columns:1fr}}
+  .kgroup{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px}
+  .kgroup h5{font-size:12px;color:var(--amber);letter-spacing:.08em;margin-bottom:10px;text-transform:uppercase}
+  .krow{display:flex;align-items:center;gap:10px;font-size:12px;padding:4px 0;border-top:1px dotted var(--line)}
+  .krow:first-of-type{border-top:none}
+  .key{
+    display:inline-block;min-width:22px;text-align:center;
+    border:1px solid var(--green-dim);border-radius:5px;
+    padding:1px 7px;color:var(--green);font-size:11px;font-weight:700;
+    background:rgba(61,220,111,.07);box-shadow:0 2px 0 var(--line);
   }
-  .btn:hover { text-decoration: none; transform: translateY(-2px); }
-  .btn-primary {
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
-    color: #0d1017; box-shadow: 0 8px 24px rgba(122,162,247,0.28);
+  .krow .desc{color:var(--muted);flex:1}
+
+  /* ---------- CONFIG ---------- */
+  .cfgwrap{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px;margin-top:12px}
+  .cfgrow{display:flex;gap:10px;font-size:12px;padding:7px 0;border-top:1px dotted var(--line);flex-wrap:wrap}
+  .cfgrow:first-child{border-top:none}
+  .cfgkey{color:var(--amber);font-weight:700;min-width:138px}
+  .cfgrow .desc{color:var(--muted);flex:1;min-width:200px}
+  .cfgrow .desc code{color:var(--cyan)}
+
+  /* ---------- INTERVALS ---------- */
+  .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .pill{border:1px dashed var(--green-dim);color:var(--green);font-size:12px;padding:6px 12px;border-radius:8px;background:rgba(61,220,111,.05)}
+  .pill b{color:var(--amber)}
+
+  /* ---------- FOOTER ---------- */
+  .foot{
+    margin-top:54px;border-top:1px solid var(--line);padding-top:22px;
+    display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:12px;color:var(--muted)
   }
-  .btn-ghost { border-color: var(--border); color: var(--fg); background: var(--bg-soft); }
-  .btn-ghost:hover { border-color: var(--accent); }
+  .foot .lg{color:var(--green);font-weight:700}
+  .foot a{color:var(--cyan);text-decoration:none;border-bottom:1px dotted var(--cyan)}
+  .foot .spacer{flex:1}
 
-  .install-pill {
-    margin-top: 22px; display: inline-flex; align-items: center; gap: 12px;
-    font-family: 'JetBrains Mono'; font-size: .95rem;
-    background: var(--bg-panel); border: 1px solid var(--border);
-    border-radius: 10px; padding: 11px 16px;
-  }
-  .install-pill .sigil { color: var(--green); }
-  .install-pill button {
-    background: none; border: 1px solid var(--border); color: var(--fg-dim);
-    border-radius: 6px; padding: 3px 9px; font-size: .78rem; cursor: pointer;
-    font-family: inherit; transition: all .12s;
-  }
-  .install-pill button:hover { color: var(--fg); border-color: var(--accent); }
-
-  /* ---------- terminal mock ---------- */
-  .term {
-    margin-top: 56px; border: 1px solid var(--border); border-radius: var(--radius);
-    background: var(--bg-soft); overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,0.45);
-  }
-  .term-bar { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--bg-panel); }
-  .term-bar .c { width: 12px; height: 12px; border-radius: 50%; }
-  .c.r { background: #f7768e; } .c.y { background: #e0af68; } .c.g { background: #9ece6a; }
-  .term-bar .title { margin-left: 10px; font-family:'JetBrains Mono'; font-size:.8rem; color: var(--fg-faint); }
-  .term-body { padding: 20px; font-family:'JetBrains Mono'; font-size: .86rem; line-height: 1.7; overflow-x: auto; }
-  .term-body .pl { color: var(--green); } .term-body .fl { color: var(--accent); }
-  .term-body .cm { color: var(--fg-faint); } .term-body .hd { color: var(--accent-2); font-weight:700; }
-  .term-body .bul { color: var(--yellow); }
-  .term-body pre { white-space: pre; margin: 0; }
-
-  /* screenshots */
-  .shot { margin: 0; }
-  .shot a {
-    display: block; padding: 12px; border-radius: var(--radius);
-    background: var(--bg-soft); border: 1px solid var(--border);
-    box-shadow: 0 20px 60px rgba(0,0,0,0.4); transition: border-color .15s, transform .15s;
-  }
-  .shot a:hover { border-color: var(--accent); transform: translateY(-3px); }
-  .shot img { display: block; width: 100%; height: auto; border-radius: 8px; }
-  .shot figcaption { color: var(--fg-dim); font-size: .92rem; margin-top: 14px; line-height: 1.5; }
-  .shot figcaption strong { color: var(--fg); font-weight: 600; }
-  .shot-hero { margin-top: 56px; }
-  .shot-hero a { box-shadow: 0 30px 80px rgba(0,0,0,0.45); }
-  .shot-hero figcaption { text-align: center; }
-  .shots-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
-  .shots-grid .shot-wide { grid-column: 1 / -1; }
-  @media (max-width: 720px) { .shots-grid { grid-template-columns: 1fr; } }
-
-  /* ---------- sections ---------- */
-  section { padding: 70px 0; border-top: 1px solid var(--border); }
-  .sec-label { font-family:'JetBrains Mono'; font-size:.82rem; color: var(--accent); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
-  h2 { font-size: clamp(1.7rem, 4vw, 2.4rem); font-weight: 800; letter-spacing: -0.02em; margin-bottom: 14px; }
-  .sec-sub { color: var(--fg-dim); max-width: 620px; margin-bottom: 40px; font-size: 1.05rem; }
-
-  /* feature grid */
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px,1fr)); gap: 18px; }
-  .card {
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius);
-    padding: 24px; transition: border-color .15s, transform .15s;
-  }
-  .card:hover { border-color: var(--accent); transform: translateY(-3px); }
-  .card .ico { font-size: 1.5rem; margin-bottom: 12px; display:block; }
-  .card h3 { font-size: 1.1rem; margin-bottom: 7px; font-weight: 700; }
-  .card p { color: var(--fg-dim); font-size: .95rem; }
-
-  /* steps */
-  .steps { display: grid; gap: 16px; counter-reset: step; }
-  .step {
-    display: grid; grid-template-columns: 44px 1fr; gap: 18px; align-items: start;
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 24px;
-  }
-  .step .num {
-    width: 44px; height: 44px; border-radius: 10px; display: grid; place-items: center;
-    font-family:'JetBrains Mono'; font-weight: 700; font-size: 1.1rem;
-    background: linear-gradient(120deg, rgba(122,162,247,.18), rgba(187,154,247,.18));
-    color: var(--accent); border: 1px solid var(--border);
-  }
-  .step h3 { font-size: 1.08rem; margin-bottom: 6px; }
-  .step p { color: var(--fg-dim); font-size: .96rem; }
-  .step code { background: var(--bg); padding: 2px 7px; border-radius: 5px; font-size: .86rem; color: var(--green); border: 1px solid var(--border); }
-
-  pre.block {
-    background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
-    padding: 18px 20px; overflow-x: auto; font-family:'JetBrains Mono'; font-size: .88rem;
-    color: var(--fg); margin: 16px 0; line-height: 1.7;
-  }
-  pre.block .cm { color: var(--fg-faint); }
-  pre.block .fl { color: var(--accent); }
-
-  /* keymap */
-  .keymap { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px,1fr)); gap: 24px; }
-  .keygroup h3 { font-size: 1rem; margin-bottom: 14px; color: var(--accent-2); font-family:'JetBrains Mono'; }
-  .keyrow { display: flex; align-items: baseline; gap: 14px; padding: 7px 0; border-bottom: 1px solid var(--border); }
-  .keyrow:last-child { border-bottom: none; }
-  .keys { flex-shrink: 0; min-width: 120px; }
-  kbd {
-    display: inline-block; background: var(--bg-panel); border: 1px solid var(--border);
-    border-bottom-width: 2px; border-radius: 6px; padding: 2px 8px; font-size: .8rem;
-    color: var(--fg); margin-right: 3px;
-  }
-  .keyrow .desc { color: var(--fg-dim); font-size: .92rem; }
-
-  /* config table */
-  table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-  th, td { text-align: left; padding: 12px 14px; border-bottom: 1px solid var(--border); font-size: .92rem; }
-  th { color: var(--fg-faint); font-weight: 600; font-family:'JetBrains Mono'; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
-  td:first-child { font-family:'JetBrains Mono'; color: var(--green); white-space: nowrap; }
-  td { color: var(--fg-dim); }
-  .tablewrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg-panel); overflow-x:auto; }
-
-  /* footer */
-  footer { border-top: 1px solid var(--border); padding: 44px 0; color: var(--fg-faint); }
-  footer .wrap { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; }
-  footer a { color: var(--fg-dim); }
-  .foot-links { display: flex; gap: 22px; flex-wrap: wrap; }
-
-  .pill-tags { display:flex; flex-wrap:wrap; gap:8px; margin-top: 8px; }
-  .tag { font-family:'JetBrains Mono'; font-size:.78rem; color: var(--fg-dim); border:1px solid var(--border); border-radius:999px; padding:4px 12px; background: var(--bg-soft); }
+  /* fade-in */
+  .fade{opacity:0;transform:translateY(14px);animation:rise .7s ease forwards}
+  @keyframes rise{to{opacity:1;transform:none}}
+  .d1a{animation-delay:.05s}.d2a{animation-delay:.15s}.d3a{animation-delay:.25s}
+  .d4a{animation-delay:.35s}.d5a{animation-delay:.45s}.d6a{animation-delay:.55s}
+  @media(prefers-reduced-motion:reduce){.fade{animation:none;opacity:1;transform:none}.blink{animation:none}}
 </style>
 </head>
 <body>
+<div class="wrap">
 
-<nav>
-  <div class="wrap">
-    <a class="brand" href="#top"><span class="prompt">❯</span> whathaveidone</a>
-    <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#screenshots">Screenshots</a>
-      <a href="#install">Install</a>
-      <a href="#usage">Usage</a>
-      <a href="#keys">Keys</a>
-      <a href="#config">Config</a>
-      <a class="nav-gh" href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">GitHub ↗</a>
-    </div>
+  <!-- HEADER -->
+  <div class="topbar fade d1a">
+    <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
+    <span class="path">~/projects — whathaveidone</span>
   </div>
-</nav>
-
-<header id="top">
-  <div class="wrap">
-    <span class="badge"><span class="dot"></span> Rust · Ratatui · written for the terminal</span>
-    <h1>Your standup,<br /><span class="grad">straight from your commits.</span></h1>
-    <p class="lede">
-      A terminal tool that scans your Git repositories, groups recent commits by day and topic,
-      and turns them into a ready-to-read standup summary with AI — Google Gemini out of the box,
-      or any OpenAI-compatible API.
-    </p>
-
-    <div class="cta-row">
-      <a class="btn btn-primary" href="#install">▸ Get started</a>
-      <a class="btn btn-ghost" href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">★ Star on GitHub</a>
-      <a class="btn btn-ghost" href="https://crates.io/crates/whathaveidone" target="_blank" rel="noopener">📦 crates.io</a>
+  <header class="hero fade d1a">
+    <div class="prompt-line"><span class="c">$</span> whathaveidone <span class="blink">▋</span></div>
+    <h1 class="logo"><span class="caret">❯</span> whathaveidone</h1>
+    <p class="tagline">A terminal tool that scans your <b>Git repositories</b>, groups recent commits by day &amp; topic, and turns them into a ready-to-read <b>standup summary</b> — powered by AI.</p>
+    <p class="aliasnote">Run it as <code>whathaveidone</code> — or the short alias <code>whid</code>.</p>
+    <div class="badges">
+      <span class="badge">Rust · Ratatui</span>
+      <span class="badge">Keyboard-driven TUI</span>
+      <span class="badge">Google Gemini</span>
+      <span class="badge">OpenAI-compatible</span>
+      <span class="badge">MIT licensed</span>
     </div>
-
-    <div class="install-pill">
-      <span><span class="sigil">$</span> cargo install whathaveidone</span>
-      <button onclick="copyInstall(this)">copy</button>
+    <div class="cta">
+      <a class="primary" href="#install">▸ Get started</a>
+      <a class="ghost" href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">★ GitHub</a>
+      <a class="ghost" href="https://crates.io/crates/whathaveidone" target="_blank" rel="noopener">📦 crates.io</a>
     </div>
+  </header>
 
-    <div class="pill-tags">
-      <span class="tag">whid &amp; whathaveidone binaries</span>
-      <span class="tag">multi-repo</span>
-      <span class="tag">clipboard export</span>
-      <span class="tag">custom prompts</span>
-      <span class="tag">MIT licensed</span>
+  <!-- HOW IT WORKS -->
+  <section class="sec fade d2a">
+    <div class="sec-h"><span class="hash">#</span><h2>How it works</h2><span class="rule"></span></div>
+    <div class="pipe">
+      <div class="step">
+        <span class="ico">📚</span><span class="n">01 / SCAN</span>
+        <h3>Find repos</h3>
+        <p>Scans every Git repo below the current folder and lists their recent commits side by side.</p>
+        <span class="arrow">▸</span>
+      </div>
+      <div class="step">
+        <span class="ico">🗂️</span><span class="n">02 / GROUP</span>
+        <h3>Group commits</h3>
+        <p>Sorts commits by day and topic over your chosen timeframe — today, week, month, or a date range.</p>
+        <span class="arrow">▸</span>
+      </div>
+      <div class="step">
+        <span class="ico">🧠</span><span class="n">03 / SUMMARIZE</span>
+        <h3>Ask the AI</h3>
+        <p>Sends the selection to Gemini (or any OpenAI-compatible model) and gets back a readable standup.</p>
+        <span class="arrow">▸</span>
+      </div>
+      <div class="step">
+        <span class="ico">📋</span><span class="n">04 / SHIP</span>
+        <h3>Copy &amp; paste</h3>
+        <p>One keypress copies the summary to your clipboard. Paste it straight into your standup.</p>
+      </div>
     </div>
+  </section>
 
-    <!-- hero screenshot -->
-    <figure class="shot shot-hero">
-      <a href="images/screenshot1-overview.png" target="_blank" rel="noopener">
-        <img src="images/screenshot1-overview.png" alt="Commits view: repository sidebar and commit list with Timeframe / Selection tabs" loading="lazy" />
-      </a>
-      <figcaption>Commits view — repositories in the sidebar, recent commits grouped and ready to summarize.</figcaption>
-    </figure>
-  </div>
-</header>
-
-<!-- SCREENSHOTS -->
-<section id="screenshots">
-  <div class="wrap">
-    <div class="sec-label">// screenshots</div>
-    <h2>See it in action.</h2>
-    <p class="sec-sub">A fast, keyboard-driven TUI with three views: commits, saved overviews, and a stats dashboard.</p>
-
-    <div class="shots-grid">
-      <figure class="shot">
-        <a href="images/screenshot2-overview-detail.png" target="_blank" rel="noopener">
-          <img src="images/screenshot2-overview-detail.png" alt="Commit detail pane showing the full commit message and author" loading="lazy" />
-        </a>
-        <figcaption><strong>Commit detail</strong> — open the detail pane to read the full message and author for any commit.</figcaption>
-      </figure>
-      <figure class="shot">
-        <a href="images/screenshot3-overview-ai.png" target="_blank" rel="noopener">
-          <img src="images/screenshot3-overview-ai.png" alt="Overviews view: master/detail browser of saved AI summaries" loading="lazy" />
-        </a>
-        <figcaption><strong>Saved overviews</strong> — browse, copy, regenerate, or delete past AI summaries; they persist across restarts.</figcaption>
-      </figure>
-      <figure class="shot shot-wide">
-        <a href="images/screenshot4-stats.png" target="_blank" rel="noopener">
-          <img src="images/screenshot4-stats.png" alt="Full-screen stats dashboard: commits per day, weekday, hour, and per repo" loading="lazy" />
-        </a>
-        <figcaption><strong>Stats dashboard</strong> — commits per day, by weekday and hour, busiest day, and a per-repo / author breakdown.</figcaption>
-      </figure>
-    </div>
-  </div>
-</section>
-
-<!-- FEATURES -->
-<section id="features">
-  <div class="wrap">
-    <div class="sec-label">// what it does</div>
-    <h2>Less "what did I do yesterday?", more shipping.</h2>
-    <p class="sec-sub">Everything happens in a fast, keyboard-driven TUI. No browser, no copy-pasting commit logs into a chat window.</p>
-
+  <!-- FEATURES -->
+  <section class="sec fade d3a">
+    <div class="sec-h"><span class="hash">#</span><h2>What it does</h2><span class="rule"></span></div>
     <div class="grid">
-      <div class="card"><span class="ico">🧠</span><h3>AI summaries</h3><p>Groups commits by day and topic into a readable standup. Powered by Gemini or any OpenAI-compatible endpoint.</p></div>
-      <div class="card"><span class="ico">📚</span><h3>Multi-repo</h3><p>Scans every Git repository under the current directory and lists their recent commits side by side.</p></div>
-      <div class="card"><span class="ico">💾</span><h3>Saved overviews</h3><p>Generated summaries are written to disk — browse, copy, regenerate, or delete past ones in a master/detail view that survives restarts.</p></div>
-      <div class="card"><span class="ico">✅</span><h3>Mark &amp; summarize</h3><p>Mark individual commits with <kbd>m</kbd> or bulk-mark a whole repo, then summarize only the selection.</p></div>
-      <div class="card"><span class="ico">📋</span><h3>One-key clipboard</h3><p>Copy any summary to your clipboard with a single keypress and paste it straight into your standup.</p></div>
-      <div class="card"><span class="ico">🎛️</span><h3>Customizable prompts</h3><p>Bring your own prompt template with placeholders for project, interval, language, and the commit data.</p></div>
-      <div class="card"><span class="ico">🌍</span><h3>Any language</h3><p>Ask for the summary in German, English, or anything else with a single <kbd>--lang</kbd> flag.</p></div>
-      <div class="card"><span class="ico">⌨️</span><h3>Consistent keymap</h3><p>A two-view model with a focus ring, context-aware footer, and a built-in <kbd>?</kbd> help overlay listing every key.</p></div>
-      <div class="card"><span class="ico">🔍</span><h3>Detailed log view</h3><p>Toggle a multi-line <code>git log</code>-style view with full commit bodies and authors with <kbd>d</kbd>.</p></div>
+      <div class="card"><span class="fi">🧠</span><h4>AI summaries</h4><p>Turns raw commits into a coherent standup, grouped by day and topic.</p></div>
+      <div class="card"><span class="fi">📚</span><h4>Multi-repo</h4><p>Reads many repositories at once, no per-project setup.</p></div>
+      <div class="card"><span class="fi">💾</span><h4>Saved overviews</h4><p>Summaries persist to disk — browse, copy, regenerate or delete past ones.</p></div>
+      <div class="card"><span class="fi">✅</span><h4>Mark &amp; summarize</h4><p>Mark commits with <span class="kbd">m</span> or a whole repo, then summarize only the selection.</p></div>
+      <div class="card"><span class="fi">🎛️</span><h4>Custom prompts</h4><p>Bring your own template with placeholders for project, interval &amp; language.</p></div>
+      <div class="card"><span class="fi">🌍</span><h4>Any language</h4><p>Get the summary in English, German, or anything else via <span class="kbd">--lang</span>.</p></div>
+      <div class="card"><span class="fi">📊</span><h4>Stats dashboard</h4><p>Commits per day, by weekday &amp; hour, busiest day, per-repo / per-author.</p></div>
+      <div class="card"><span class="fi">⌨️</span><h4>Consistent keymap</h4><p>Home-row navigation, focus ring, and a built-in <span class="kbd">?</span> help overlay.</p></div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- INSTALL -->
-<section id="install">
-  <div class="wrap">
-    <div class="sec-label">// installation</div>
-    <h2>Up and running in a minute.</h2>
-    <p class="sec-sub">You need <a href="https://rustup.rs/" target="_blank" rel="noopener">Rust</a> to build, and an API key for your chosen provider.</p>
-
-    <div class="steps">
-      <div class="step">
-        <div class="num">1</div>
-        <div>
-          <h3>Install from crates.io</h3>
-          <p>This gives you two binaries: <code>whathaveidone</code> and the short alias <code>whid</code>.</p>
-          <pre class="block">cargo install whathaveidone</pre>
-        </div>
-      </div>
-      <div class="step">
-        <div class="num">2</div>
-        <div>
-          <h3>Set your API key</h3>
-          <p>Gemini is the default. On first run, if no key is found, the app offers to save one to <code>~/.config/whid/whid.toml</code>.</p>
-          <pre class="block"><span class="cm"># Gemini (default)</span>
-export GEMINI_API_KEY=your-key-here
-
-<span class="cm"># …or any OpenAI-compatible provider —</span>
-<span class="cm"># key via env, base URL via config or the --base-url flag</span>
-export CUSTOM_API_KEY=your-key-here
-whid <span class="fl">--provider</span> custom <span class="fl">--base-url</span> https://openrouter.ai/api/v1</pre>
-        </div>
-      </div>
-      <div class="step">
-        <div class="num">3</div>
-        <div>
-          <h3>Run it in any project folder</h3>
-          <p>Defaults to today's commits across all repos below the current directory.</p>
-          <pre class="block">whid              <span class="cm"># or: whathaveidone</span>
-whid week <span class="fl">--lang</span> german</pre>
-        </div>
-      </div>
+  <!-- SCREENSHOTS (compact) -->
+  <section class="sec fade d3a">
+    <div class="sec-h"><span class="hash">#</span><h2>Screenshots</h2><span class="rule"></span></div>
+    <p class="lead">Three views — commits, saved overviews, and a stats dashboard. Click any shot to enlarge.</p>
+    <div class="shots">
+      <figure>
+        <a href="images/screenshot1-overview.png" target="_blank" rel="noopener"><img src="images/screenshot1-overview.png" alt="Commits view: repository sidebar and commit list" loading="lazy"></a>
+        <figcaption><b>Commits</b> — repos &amp; commit list</figcaption>
+      </figure>
+      <figure>
+        <a href="images/screenshot2-overview-detail.png" target="_blank" rel="noopener"><img src="images/screenshot2-overview-detail.png" alt="Commit detail pane with full message and author" loading="lazy"></a>
+        <figcaption><b>Detail</b> — full message &amp; author</figcaption>
+      </figure>
+      <figure>
+        <a href="images/screenshot3-overview-ai.png" target="_blank" rel="noopener"><img src="images/screenshot3-overview-ai.png" alt="Overviews view: saved AI summaries" loading="lazy"></a>
+        <figcaption><b>Overviews</b> — saved AI summaries</figcaption>
+      </figure>
+      <figure>
+        <a href="images/screenshot4-stats.png" target="_blank" rel="noopener"><img src="images/screenshot4-stats.png" alt="Stats dashboard: commits per day, weekday, hour" loading="lazy"></a>
+        <figcaption><b>Stats</b> — the dashboard view</figcaption>
+      </figure>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- USAGE -->
-<section id="usage">
-  <div class="wrap">
-    <div class="sec-label">// usage</div>
-    <h2>Three views, one keymap.</h2>
-    <p class="sec-sub">The app separates <em>which view</em> you're in from <em>which pane</em> has focus.</p>
+  <!-- INSTALL -->
+  <section class="sec fade d4a" id="install">
+    <div class="sec-h"><span class="hash">#</span><h2>Up &amp; running in a minute</h2><span class="rule"></span></div>
+    <div class="term">
+      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">bash — install &amp; first run</span></div>
+<pre><span class="cmt"># 1 · Install from crates.io (needs Rust)</span>
+<span class="cmt">#     installs the `whathaveidone` binary + a short `whid` alias</span>
+<span class="cmd">cargo</span> install whathaveidone
 
-    <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(280px,1fr));">
-      <div class="card">
-        <span class="ico">①</span><h3>Commits view</h3>
-        <p>The sidebar of repositories plus the commit list. Switch the list between <strong>Timeframe</strong> and <strong>Selection</strong> mode with <kbd>s</kbd>. Press <kbd>a</kbd> to generate an AI overview.</p>
-      </div>
-      <div class="card">
-        <span class="ico">②</span><h3>Overviews view</h3>
-        <p>A master/detail browser of past AI summaries. The left list holds every saved overview with its metadata; the right pane shows the full text. Copy, regenerate, or delete.</p>
-      </div>
-      <div class="card">
-        <span class="ico">③</span><h3>Stats view</h3>
-        <p>A full-screen dashboard with commits per day, by weekday and hour, your busiest day, and a per-repo and per-author breakdown.</p>
-      </div>
+<span class="cmt"># 2 · Set your API key (Gemini is the default)</span>
+<span class="cmd">export</span> GEMINI_API_KEY=<span class="str">your-key-here</span>
+
+<span class="cmt"># 3 · Run it inside any project folder</span>
+<span class="cmt"># today's commits, all repos below ./</span>
+<span class="cmd">whathaveidone</span>
+
+<span class="cmt"># last week, summarized in German</span>
+<span class="cmd">whathaveidone</span> week <span class="flg">--lang</span> <span class="str">german</span></pre>
     </div>
+  </section>
 
-    <h3 style="margin:38px 0 12px; font-size:1.15rem;">Time intervals</h3>
-    <p class="sec-sub" style="margin-bottom:14px;">Cycle with <kbd>[</kbd> / <kbd>]</kbd> at runtime, or pass a start interval as an argument:</p>
-    <pre class="block">whid <span class="cm"># today / 24h (default)</span>
-whid 48
-whid yesterday      <span class="cm"># or 72</span>
-whid week
-whid month
+  <!-- TIME INTERVALS -->
+  <section class="sec fade d4a">
+    <div class="sec-h"><span class="hash">#</span><h2>Time intervals</h2><span class="rule"></span></div>
+    <p class="lead">Cycle live with <span class="key">[</span> / <span class="key">]</span>, or pass one to <code>whathaveidone</code> as an argument:</p>
+    <div class="pills">
+      <span class="pill"><b>today</b> · 24h</span>
+      <span class="pill"><b>48</b></span>
+      <span class="pill"><b>yesterday</b> · 72</span>
+      <span class="pill"><b>week</b></span>
+      <span class="pill"><b>month</b></span>
+      <span class="pill"><b>--from</b> 2026-01-01 <b>--to</b> 2026-01-31</span>
+    </div>
+  </section>
 
-<span class="cm"># custom date range (YYYY-MM-DD)</span>
-whid <span class="fl">--from</span> 2026-01-01 <span class="fl">--to</span> 2026-01-31</pre>
-
-    <h3 style="margin:38px 0 12px; font-size:1.15rem;">Providers &amp; models</h3>
-    <p class="sec-sub" style="margin-bottom:14px;">Gemini by default; switch to any OpenAI-compatible API with <kbd>--provider custom</kbd>.</p>
-    <pre class="block"><span class="cm"># Gemini model override</span>
-whid <span class="fl">--model</span> gemini-2.5-flash-preview-05-20
-
-<span class="cm"># OpenRouter</span>
-export CUSTOM_API_KEY=sk-or-...
-whid <span class="fl">--provider</span> custom \
-  <span class="fl">--base-url</span> https://openrouter.ai/api/v1 \
-  <span class="fl">--model</span> openai/gpt-4o-mini
-
-<span class="cm"># OpenAI</span>
-export CUSTOM_API_KEY=sk-...
-whid <span class="fl">--provider</span> custom \
-  <span class="fl">--base-url</span> https://api.openai.com/v1 \
-  <span class="fl">--model</span> gpt-4o-mini</pre>
-
-    <h3 style="margin:38px 0 12px; font-size:1.15rem;">Custom prompt</h3>
-    <p class="sec-sub" style="margin-bottom:14px;">Provide a template with <kbd>--prompt file.txt</kbd>. Placeholders are filled automatically:</p>
-    <pre class="block"><span class="fl">{from}</span> <span class="fl">{to}</span> <span class="fl">{project}</span> / <span class="fl">{projectname}</span> <span class="fl">{interval}</span> <span class="fl">{lang}</span> <span class="fl">{commits}</span></pre>
-  </div>
-</section>
-
-<!-- KEYS -->
-<section id="keys">
-  <div class="wrap">
-    <div class="sec-label">// keyboard shortcuts</div>
-    <h2>Built for your hands on the home row.</h2>
-    <p class="sec-sub">Press <kbd>?</kbd> at any time for an in-app overlay of every key.</p>
-
-    <div class="keymap">
-      <div class="keygroup">
-        <h3>Global</h3>
-        <div class="keyrow"><span class="keys"><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></span><span class="desc">Switch view (Commits / Overviews / Stats)</span></div>
-        <div class="keyrow"><span class="keys"><kbd>Tab</kbd><kbd>⇧Tab</kbd></span><span class="desc">Move focus between panes</span></div>
-        <div class="keyrow"><span class="keys"><kbd>←</kbd><kbd>→</kbd> / <kbd>h</kbd><kbd>l</kbd></span><span class="desc">Move focus left / right</span></div>
-        <div class="keyrow"><span class="keys"><kbd>↑</kbd><kbd>↓</kbd> / <kbd>j</kbd><kbd>k</kbd></span><span class="desc">Navigate / scroll the focused pane</span></div>
-        <div class="keyrow"><span class="keys"><kbd>?</kbd></span><span class="desc">Toggle the help overlay</span></div>
-        <div class="keyrow"><span class="keys"><kbd>q</kbd></span><span class="desc">Quit</span></div>
+  <!-- KEYMAP -->
+  <section class="sec fade d5a">
+    <div class="sec-h"><span class="hash">#</span><h2>Keyboard shortcuts</h2><span class="rule"></span></div>
+    <div class="keys">
+      <div class="kgroup">
+        <h5>Global</h5>
+        <div class="krow"><span class="key">1</span><span class="key">2</span><span class="key">3</span><span class="desc">Switch view · Commits / Overviews / Stats</span></div>
+        <div class="krow"><span class="key">h</span><span class="key">j</span><span class="key">k</span><span class="key">l</span><span class="desc">Navigate &amp; move focus</span></div>
+        <div class="krow"><span class="key">?</span><span class="desc">Toggle help overlay</span></div>
+        <div class="krow"><span class="key">q</span><span class="desc">Quit</span></div>
       </div>
-
-      <div class="keygroup">
-        <h3>Commits view</h3>
-        <div class="keyrow"><span class="keys"><kbd>Space</kbd></span><span class="desc">Open / close the detail pane</span></div>
-        <div class="keyrow"><span class="keys"><kbd>s</kbd></span><span class="desc">Toggle list mode (Timeframe / Selection)</span></div>
-        <div class="keyrow"><span class="keys"><kbd>m</kbd></span><span class="desc">Mark a commit — or a whole repo from the sidebar</span></div>
-        <div class="keyrow"><span class="keys"><kbd>[</kbd><kbd>]</kbd></span><span class="desc">Previous / next timeframe</span></div>
-        <div class="keyrow"><span class="keys"><kbd>u</kbd></span><span class="desc">Toggle mine / all authors</span></div>
-        <div class="keyrow"><span class="keys"><kbd>d</kbd></span><span class="desc">Toggle detailed commit view</span></div>
-        <div class="keyrow"><span class="keys"><kbd>a</kbd></span><span class="desc">Generate an AI overview</span></div>
+      <div class="kgroup">
+        <h5>Commits view</h5>
+        <div class="krow"><span class="key">a</span><span class="desc">Generate an AI overview</span></div>
+        <div class="krow"><span class="key">m</span><span class="desc">Mark a commit or a whole repo</span></div>
+        <div class="krow"><span class="key">s</span><span class="desc">Toggle Timeframe / Selection mode</span></div>
+        <div class="krow"><span class="key">u</span><span class="desc">Toggle mine / all authors</span></div>
+        <div class="krow"><span class="key">d</span><span class="desc">Toggle detailed commit view</span></div>
       </div>
-
-      <div class="keygroup">
-        <h3>Overviews view</h3>
-        <div class="keyrow"><span class="keys"><kbd>Enter</kbd><kbd>c</kbd></span><span class="desc">Copy the selected overview to clipboard</span></div>
-        <div class="keyrow"><span class="keys"><kbd>r</kbd></span><span class="desc">Regenerate the last overview</span></div>
-        <div class="keyrow"><span class="keys"><kbd>x</kbd><kbd>Del</kbd></span><span class="desc">Delete the selected overview (confirm y/n)</span></div>
-        <div class="keyrow"><span class="keys"><kbd>a</kbd></span><span class="desc">Generate a new overview</span></div>
-        <div class="keyrow"><span class="keys"><kbd>Esc</kbd></span><span class="desc">Back to Commits (cancels generation)</span></div>
+      <div class="kgroup">
+        <h5>Overviews view</h5>
+        <div class="krow"><span class="key">c</span><span class="desc">Copy overview to clipboard</span></div>
+        <div class="krow"><span class="key">r</span><span class="desc">Regenerate the last overview</span></div>
+        <div class="krow"><span class="key">x</span><span class="desc">Delete the selected overview</span></div>
       </div>
-
-      <div class="keygroup">
-        <h3>Stats view</h3>
-        <div class="keyrow"><span class="keys"><kbd>[</kbd><kbd>]</kbd></span><span class="desc">Previous / next timeframe</span></div>
-        <div class="keyrow"><span class="keys"><kbd>w</kbd></span><span class="desc">Jump to the week timeframe</span></div>
-        <div class="keyrow"><span class="keys"><kbd>u</kbd></span><span class="desc">Toggle mine / all authors</span></div>
-        <div class="keyrow"><span class="keys"><kbd>d</kbd></span><span class="desc">Toggle the detailed breakdown</span></div>
-        <div class="keyrow"><span class="keys"><kbd>1</kbd><kbd>2</kbd></span><span class="desc">Back to Commits / Overviews</span></div>
+      <div class="kgroup">
+        <h5>Stats view</h5>
+        <div class="krow"><span class="key">[</span><span class="key">]</span><span class="desc">Previous / next timeframe</span></div>
+        <div class="krow"><span class="key">w</span><span class="desc">Jump to the week timeframe</span></div>
+        <div class="krow"><span class="key">d</span><span class="desc">Toggle the detailed breakdown</span></div>
       </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- CONFIG -->
-<section id="config">
-  <div class="wrap">
-    <div class="sec-label">// configuration</div>
-    <h2>Configure once, override anywhere.</h2>
-    <p class="sec-sub">
-      Settings layer from three sources, each overriding the last: the embedded blueprint,
-      your user config at <code>~/.config/whid/whid.toml</code>, and an optional <code>whid.toml</code>
-      in the current directory. CLI flags win over all of them.
-    </p>
+  <!-- PROVIDERS -->
+  <section class="sec fade d6a">
+    <div class="sec-h"><span class="hash">#</span><h2>Bring your own model</h2><span class="rule"></span></div>
+    <div class="term">
+      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">bash — providers</span></div>
+<pre><span class="cmt"># Gemini is default — just override the model</span>
+<span class="cmd">whathaveidone</span> <span class="flg">--model</span> gemini-2.5-flash
 
-    <div class="tablewrap">
-      <table>
-        <thead><tr><th>Setting</th><th>Description</th></tr></thead>
-        <tbody>
-          <tr><td>provider</td><td>AI backend: <code>"gemini"</code> (default) or <code>"custom"</code>. Override with <code>--provider</code>.</td></tr>
-          <tr><td>gemini_model</td><td>Gemini model for summaries. Override with <code>--model</code>.</td></tr>
-          <tr><td>custom_base_url</td><td>Endpoint URL for a custom provider, e.g. <code>https://openrouter.ai/api/v1</code>.</td></tr>
-          <tr><td>custom_model</td><td>Model name for the custom provider, e.g. <code>openai/gpt-4o-mini</code>.</td></tr>
-          <tr><td>custom_api_key</td><td>API key for the custom provider; falls back to <code>CUSTOM_API_KEY</code>.</td></tr>
-          <tr><td>custom_prompt_path</td><td>Path to a custom prompt template. Override with <code>--prompt</code>.</td></tr>
-          <tr><td>lang</td><td>Default summary language. Override with <code>--lang</code>.</td></tr>
-        </tbody>
-      </table>
+<span class="cmt"># OpenRouter / OpenAI / anything OpenAI-compatible</span>
+<span class="cmd">export</span> CUSTOM_API_KEY=<span class="str">sk-...</span>
+<span class="cmd">whathaveidone</span> <span class="flg">--provider</span> <span class="str">custom</span> \
+  <span class="flg">--base-url</span> <span class="str">https://api.openai.com/v1</span> \
+  <span class="flg">--model</span> <span class="str">gpt-4o-mini</span></pre>
     </div>
+  </section>
 
-    <pre class="block" style="margin-top:24px;"><span class="cm"># ~/.config/whid/whid.toml</span>
-provider = <span class="fl">"gemini"</span>
-gemini_model = <span class="fl">"gemini-3.1-flash-lite"</span>
+  <!-- CONFIG -->
+  <section class="sec fade d6a">
+    <div class="sec-h"><span class="hash">#</span><h2>Configure once, override anywhere</h2><span class="rule"></span></div>
+    <p class="lead">Settings layer from three sources, each overriding the last: the embedded blueprint, your user config at <code>~/.config/whid/whid.toml</code>, and an optional <code>whid.toml</code> in the current directory. CLI flags win over all of them.</p>
+    <div class="term">
+      <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">~/.config/whid/whid.toml</span></div>
+<pre><span class="cmd">provider</span> = <span class="str">"gemini"</span>
+<span class="cmd">gemini_model</span> = <span class="str">"gemini-3.1-flash-lite"</span>
 
-custom_base_url = <span class="fl">""</span>
-custom_model = <span class="fl">""</span>
-custom_api_key = <span class="fl">""</span>
+<span class="cmd">custom_base_url</span> = <span class="str">""</span>
+<span class="cmd">custom_model</span> = <span class="str">""</span>
+<span class="cmd">custom_api_key</span> = <span class="str">""</span>
 
-lang = <span class="fl">"english"</span></pre>
-  </div>
-</section>
-
-<footer>
-  <div class="wrap">
-    <div>
-      <strong style="color:var(--fg);font-family:'JetBrains Mono';">❯ whathaveidone</strong><br />
-      MIT licensed · built with Rust, Ratatui &amp; Crossterm by
-      <a href="https://github.com/heroheman" target="_blank" rel="noopener">heroheman</a>
+<span class="cmd">lang</span> = <span class="str">"english"</span></pre>
     </div>
-    <div class="foot-links">
-      <a href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://crates.io/crates/whathaveidone" target="_blank" rel="noopener">crates.io</a>
-      <a href="https://github.com/heroheman/whathaveidone/blob/main/CHANGELOG.md" target="_blank" rel="noopener">Changelog</a>
-      <a href="#top">Back to top ↑</a>
+    <div class="cfgwrap">
+      <div class="cfgrow"><span class="cfgkey">provider</span><span class="desc">AI backend: <code>"gemini"</code> (default) or <code>"custom"</code> · override with <code>--provider</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">gemini_model</span><span class="desc">Gemini model for summaries · override with <code>--model</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">custom_base_url</span><span class="desc">Endpoint URL for a custom provider, e.g. <code>https://openrouter.ai/api/v1</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">custom_model</span><span class="desc">Model name for the custom provider, e.g. <code>openai/gpt-4o-mini</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">custom_api_key</span><span class="desc">API key for the custom provider; falls back to <code>CUSTOM_API_KEY</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">custom_prompt_path</span><span class="desc">Path to a custom prompt template · override with <code>--prompt</code></span></div>
+      <div class="cfgrow"><span class="cfgkey">lang</span><span class="desc">Default summary language · override with <code>--lang</code></span></div>
     </div>
-  </div>
-</footer>
+  </section>
 
-<script>
-  function copyInstall(btn){
-    navigator.clipboard.writeText('cargo install whathaveidone').then(function(){
-      var t = btn.textContent; btn.textContent = 'copied ✓';
-      setTimeout(function(){ btn.textContent = t; }, 1500);
-    });
-  }
-</script>
+  <!-- FOOTER -->
+  <footer class="foot fade d6a">
+    <span class="lg">❯ whathaveidone</span>
+    <span>MIT · Rust · Ratatui · Crossterm · by <a href="https://github.com/heroheman" target="_blank" rel="noopener">heroheman</a></span>
+    <span class="spacer"></span>
+    <a href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">github.com/heroheman/whathaveidone</a>
+  </footer>
+
+</div>
 </body>
 </html>
