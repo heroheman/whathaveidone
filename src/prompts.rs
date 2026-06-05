@@ -1,5 +1,30 @@
 // Contains prompt strings for commit summaries.
 
+/// Build the final summary prompt, shared by the TUI and the non-interactive
+/// direct mode so the two never drift apart. When `template` is `Some`, its
+/// placeholders are substituted; otherwise the built-in `prompt_en` is used.
+pub fn build_prompt(
+    template: Option<&str>,
+    from: &str,
+    to: &str,
+    interval: &str,
+    project_name: &str,
+    lang: &str,
+    commits: &str,
+) -> String {
+    match template {
+        Some(t) => t
+            .replace("{from}", from)
+            .replace("{to}", to)
+            .replace("{project}", project_name)
+            .replace("{projectname}", project_name)
+            .replace("{interval}", interval)
+            .replace("{lang}", lang)
+            .replace("{commits}", commits),
+        None => prompt_en(from, to, project_name, lang, commits),
+    }
+}
+
 pub fn prompt_en(from: &str, to: &str, project_name: &str, lang: &str, commits: &str) -> String {
     format!(
         r#"

@@ -74,6 +74,14 @@ struct Cli {
     /// overwriting the matching values in your config.
     #[arg(long)]
     setup: bool,
+
+    /// Print the commits to stdout (no UI) and exit. Pipeable.
+    #[arg(short, long)]
+    list: bool,
+
+    /// Generate the AI summary, print it to stdout (no UI) and exit. Pipeable.
+    #[arg(short, long)]
+    generate: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -109,6 +117,10 @@ enum AppView {
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
+    // Direct (non-interactive) mode: skip the TUI entirely and print to stdout
+    // so the output can be piped. No raw mode, no onboarding, no key prompt.
+    let direct_mode = cli.list || cli.generate;
+
     // Detect a genuine first run *before* `Settings::new()` creates the file.
     let first_run = !config::get_user_config_path().exists();
 
@@ -116,7 +128,8 @@ fn main() -> anyhow::Result<()> {
 
     // Run the setup wizard on the first ever start, or whenever `--setup` is
     // passed. Reload settings afterwards so the chosen values take effect.
-    let onboarded = cli.setup || first_run;
+    // Skip the interactive wizard in direct mode so piped output stays clean.
+    let onboarded = !direct_mode && (cli.setup || first_run);
     if onboarded {
         terminal::disable_raw_mode().ok();
         if onboarding::run_onboarding(cli.setup, &settings)? {
@@ -143,6 +156,7 @@ fn main() -> anyhow::Result<()> {
     if provider == LlmProvider::Gemini
         && api_key.is_none()
         && !onboarded
+        && !direct_mode
         && settings.prompt_for_api_key
         && unsafe { prompt_for_api_key()? }
     {
@@ -214,6 +228,69 @@ fn main() -> anyhow::Result<()> {
     let mut filter_by_user = true;
     let mut detailed_commit_view = false;
     let mut commits: CommitData = reload_commits(&repos, current_interval, filter_by_user, detailed_commit_view, from_date.clone(), to_date.clone())?;
+
+    // --- Direct mode: print to stdout and exit, no TUI ---
+    if direct_mode {
+        let now = chrono::Local::now();
+        let to = to_date.clone().unwrap_or_else(|| now.format("%Y-%m-%d").to_string());
+        let from = from_date.clone()
+            .unwrap_or_else(|| (now - current_interval).format("%Y-%m-%d").to_string());
+        let interval_str = intervals[current_index].0;
+
+        // Resolve a display name for a repo path. When `whid` runs at a repo
+        // root the path is ".", whose file_name() is None — canonicalize so the
+        // header shows the actual directory name instead of an empty string.
+        let repo_name = |repo: &std::path::Path| -> String {
+            if let Some(name) = repo.file_name() {
+                return name.to_string_lossy().into_owned();
+            }
+            repo.canonicalize().ok()
+                .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned()))
+                .unwrap_or_else(|| repo.display().to_string())
+        };
+
+        if cli.list {
+            // Raw commits, grouped per repo with a header.
+            for (repo, msgs) in &commits {
+                println!("## {}", repo_name(repo));
+                for msg in msgs {
+                    println!("{msg}");
+                }
+                println!();
+            }
+        } else {
+            // Build the "All projects" prompt exactly like the TUI summary path.
+            let commit_str = commits.iter()
+                .flat_map(|(repo, msgs)| {
+                    let name = repo_name(repo);
+                    msgs.iter().map(move |msg| format!("[{name}] {msg}"))
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            // For Gemini, surface a missing key on stderr (non-zero exit) instead
+            // of prompting, so piped output never contains an error blob.
+            if llm.provider == LlmProvider::Gemini && env::var("GEMINI_API_KEY").is_err() {
+                eprintln!(
+                    "Gemini API key not found. Add it to {} or export GEMINI_API_KEY.",
+                    config::get_user_config_path().display()
+                );
+                std::process::exit(1);
+            }
+
+            let template = prompt_path.as_deref().and_then(|p| std::fs::read_to_string(p).ok());
+            let prompt = prompts::build_prompt(
+                template.as_deref(), &from, &to, interval_str, "All projects", &lang, &commit_str,
+            );
+
+            let rt = Runtime::new()?;
+            let summary = rt
+                .block_on(network::fetch_commit_summary(&prompt, &lang, &llm))
+                .map_err(|e| anyhow::anyhow!("Failed to generate summary: {e}"))?;
+            println!("{summary}");
+        }
+        return Ok(());
+    }
 
     let mut selected_repo_index = usize::MAX;
     let mut selected_commit_index: Option<usize> = None;
