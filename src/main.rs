@@ -188,6 +188,9 @@ fn main() -> anyhow::Result<()> {
     let from_date = cli.from;
     let to_date = cli.to;
     let debug = cli.debug;
+    // How many recent AI generations to retain in the history store. Blueprint
+    // default is 20; a value of 0 would disable history, so guard against it.
+    let recent_generations = settings.recent_generations.filter(|&n| n > 0).unwrap_or(20);
 
     // Resolve the model for the active provider (CLI --model overrides config).
     let model = cli_model.unwrap_or_else(|| match provider {
@@ -287,6 +290,36 @@ fn main() -> anyhow::Result<()> {
             let summary = rt
                 .block_on(network::fetch_commit_summary(&prompt, &lang, &llm))
                 .map_err(|e| anyhow::anyhow!("Failed to generate summary: {e}"))?;
+
+            // The network layer returns provider errors as Ok(text); treat those
+            // like the TUI does — report on stderr, exit non-zero, don't persist.
+            if input::looks_like_error(&summary) {
+                eprintln!("{summary}");
+                std::process::exit(1);
+            }
+
+            // Persist the generation just like the TUI, capped to recent_generations.
+            let provider_str = match llm.provider {
+                LlmProvider::Gemini => "gemini",
+                LlmProvider::Custom => "custom",
+            };
+            let commit_count = commits.iter().map(|(_, c)| c.len()).sum();
+            let record = history::OverviewRecord {
+                created_at: now.format("%Y-%m-%d %H:%M").to_string(),
+                created_unix: now.timestamp(),
+                text: summary.clone(),
+                project: "All projects".to_string(),
+                interval: interval_str.to_string(),
+                from: from.clone(),
+                to: to.clone(),
+                lang: lang.clone(),
+                provider: provider_str.to_string(),
+                model: llm.model.clone(),
+                commit_count,
+                tab: "Timeframe".to_string(),
+            };
+            let _ = history::push_overview(record, recent_generations);
+
             println!("{summary}");
         }
         return Ok(());
@@ -309,6 +342,7 @@ fn main() -> anyhow::Result<()> {
         pending_delete: false,
         transient: None,
         last_request: None,
+        cap: recent_generations,
     }));
     let selected_commits = Arc::new(Mutex::new(SelectedCommits { set: BTreeMap::new() }));
 

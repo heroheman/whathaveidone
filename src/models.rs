@@ -98,6 +98,8 @@ pub struct OverviewState {
     /// The last dispatched request (prompt, lang, llm config, metadata), kept so
     /// `r` can regenerate without rebuilding it from the current selection.
     pub last_request: Option<(String, String, LlmConfig, OverviewMeta)>,
+    /// Max overviews to retain (from `recent_generations`); older are pruned.
+    pub cap: usize,
 }
 
 /// State for selected/marked commits.

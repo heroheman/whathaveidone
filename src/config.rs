@@ -25,6 +25,9 @@ pub struct Settings {
     pub openrouter_api_key: Option<String>,
     pub vercel_api_key: Option<String>,
     pub openai_api_key: Option<String>,
+    /// How many of the most recent AI generations to keep in the history store.
+    /// Older ones are pruned when a new summary is saved (TUI and direct mode).
+    pub recent_generations: Option<usize>,
 }
 
 impl Settings {

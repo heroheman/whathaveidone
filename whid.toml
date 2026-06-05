@@ -47,3 +47,8 @@ custom_api_key = ""
 openrouter_api_key = ""
 vercel_api_key = ""
 openai_api_key = ""
+
+# How many of the most recent AI generations to keep in the history store
+# (~/.config/whid/overviews.json). When a new summary is saved, anything older
+# than this is pruned. Applies to both the TUI and the direct --generate mode.
+recent_generations = 20

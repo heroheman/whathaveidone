@@ -9,9 +9,6 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
-/// Keep at most this many overviews on disk / in memory.
-pub const MAX_OVERVIEWS: usize = 50;
-
 /// One stored AI overview together with the metadata of the request that
 /// produced it. Shown in the overview view's list (summary fields) and detail
 /// pane (full `text` + metadata header).
@@ -55,6 +52,16 @@ pub fn load_overviews() -> Vec<OverviewRecord> {
         Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
         Err(_) => Vec::new(),
     }
+}
+
+/// Append a freshly generated overview to the on-disk store, keeping only the
+/// `cap` most recent (newest first) and pruning anything older. Used by the
+/// non-interactive direct mode, which has no in-memory `OverviewState`.
+pub fn push_overview(record: OverviewRecord, cap: usize) -> std::io::Result<()> {
+    let mut items = load_overviews();
+    items.insert(0, record);
+    items.truncate(cap.max(1));
+    save_overviews(&items)
 }
 
 /// Persists overviews as pretty JSON. Best-effort: errors are returned so the

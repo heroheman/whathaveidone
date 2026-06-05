@@ -700,7 +700,7 @@ fn copy_to_clipboard(text: &str) -> bool {
 
 /// Returns true if `text` looks like an error message rather than a real
 /// summary, so it is shown transiently but never persisted to history.
-fn looks_like_error(text: &str) -> bool {
+pub fn looks_like_error(text: &str) -> bool {
     const PREFIXES: [&str; 6] = [
         "AI error",
         "Gemini API error",
@@ -949,7 +949,8 @@ fn spawn_summary(
                             tab: meta.tab,
                         };
                         s.items.insert(0, record);
-                        s.items.truncate(history::MAX_OVERVIEWS);
+                        let cap = s.cap.max(1);
+                        s.items.truncate(cap);
                         s.transient = None;
                         let _ = history::save_overviews(&s.items);
                     }
