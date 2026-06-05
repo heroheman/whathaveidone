@@ -709,6 +709,56 @@ fn render_overview(
     f.render_widget(footer, footer_area);
 }
 
+/// Renders a labelled distribution (type/repo/author/…) as text rows with mini
+/// bars inside a rounded pane. `empty_hint` is shown when there is no data.
+#[allow(clippy::too_many_arguments)]
+fn render_distribution(
+    f: &mut Frame,
+    theme: &Theme,
+    area: Rect,
+    title: &str,
+    rows: &[(String, u64)],
+    name_w: usize,
+    name_style: Style,
+    bar_color: Color,
+    empty_hint: Option<&str>,
+) {
+    let block = Block::default()
+        .title(format!("  {title}"))
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .padding(Padding::horizontal(1))
+        .border_style(Style::default().fg(theme.blurred_border))
+        .title_style(Style::default().fg(theme.text_secondary));
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+    if rows.is_empty() {
+        if let Some(hint) = empty_hint {
+            f.render_widget(
+                Paragraph::new(hint).style(Style::default().fg(theme.text_secondary)),
+                inner,
+            );
+        }
+        return;
+    }
+    let max = rows.iter().map(|(_, c)| *c).max().unwrap_or(1).max(1);
+    let cells = 8usize;
+    let lines: Vec<Line> = rows
+        .iter()
+        .map(|(name, count)| {
+            let filled = ((*count as usize * cells) / max as usize).max(1);
+            let bar: String = "\u{2588}".repeat(filled) + &"\u{2591}".repeat(cells - filled);
+            let short: String = name.chars().take(name_w).collect();
+            Line::from(vec![
+                Span::styled(format!("{short:<name_w$} "), name_style),
+                Span::styled(bar, Style::default().fg(bar_color)),
+                Span::styled(format!(" {count}"), theme.repo_commit_count),
+            ])
+        })
+        .collect();
+    f.render_widget(Paragraph::new(lines), inner);
+}
+
 /// Full-screen statistics dashboard. Pure painter: all aggregates are computed
 /// upstream by `stats::compute_stats` from the live commit data, so the charts
 /// reflect the active timeframe/filter and update on every redraw.
@@ -748,10 +798,10 @@ fn render_stats(
         .border_style(Style::default().fg(theme.blurred_border))
         .title_style(Style::default().fg(theme.text_secondary));
 
-    // Vertical split: number cards, the daily trend, then the per-X trio.
+    // Vertical split: number cards, the daily trend, then a 3×2 grid of panes.
     let body = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(5), Constraint::Percentage(45), Constraint::Min(6)])
+        .constraints([Constraint::Length(5), Constraint::Percentage(38), Constraint::Min(12)])
         .split(content);
 
     // --- Number cards ---
@@ -837,17 +887,23 @@ fn render_stats(
         }
     }
 
-    // --- Trio: weekday, hour, repo/authors ---
-    let trio = Layout::default()
+    // --- Bottom 3×2 grid: weekday/hour/types over repo/authors/tickets ---
+    let grid_rows = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+        .split(body[2]);
+    let cols = |row: Rect| Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(34)])
-        .split(body[2]);
+        .split(row);
+    let top = cols(grid_rows[0]);
+    let bottom = cols(grid_rows[1]);
 
     // Weekday bars (Mon–Sun).
     {
         let block = pane("Per weekday");
-        let inner = block.inner(trio[0]);
-        f.render_widget(block, trio[0]);
+        let inner = block.inner(top[0]);
+        f.render_widget(block, top[0]);
         let names = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
         let data: Vec<(&str, u64)> = names.iter().zip(stats.per_weekday.iter()).map(|(n, c)| (*n, *c)).collect();
         let bar_width = ((inner.width as usize / 7).saturating_sub(1)).clamp(1, 5) as u16;
@@ -864,8 +920,8 @@ fn render_stats(
     // Per-hour activity (0–23) as a sparkline — too many bars to label.
     {
         let block = pane("Per hour (0\u{2013}23)");
-        let inner = block.inner(trio[1]);
-        f.render_widget(block, trio[1]);
+        let inner = block.inner(top[1]);
+        f.render_widget(block, top[1]);
         let data: Vec<u64> = stats.per_hour.to_vec();
         let spark = Sparkline::default()
             .data(data)
@@ -882,39 +938,68 @@ fn render_stats(
         );
     }
 
-    // Per-repo distribution + top authors as text rows with mini bars.
+    // Commit types (Conventional Commits): feat / fix / chore / …
+    let types: Vec<(String, u64)> = stats.per_type.iter().take(6).cloned().collect();
+    render_distribution(
+        f, theme, top[2],
+        "Commit types",
+        &types,
+        9,
+        Style::default().fg(theme.text_highlight),
+        theme.text_highlight,
+        Some("No conventional-commit types found."),
+    );
+
+    // Per-repo distribution.
+    let repos: Vec<(String, u64)> = stats.per_repo.iter().take(6).cloned().collect();
+    render_distribution(
+        f, theme, bottom[0],
+        "Per repo",
+        &repos,
+        12,
+        Style::default().fg(theme.text),
+        theme.focus_border,
+        None,
+    );
+
+    // Top authors (empty in compact mine-only mode).
+    let authors: Vec<(String, u64)> = stats.per_author.iter().take(6).cloned().collect();
+    render_distribution(
+        f, theme, bottom[1],
+        "Top authors",
+        &authors,
+        14,
+        theme.commit_author,
+        theme.commit_author.fg.unwrap_or(Color::Green),
+        Some("Press u (all) or d (detailed)\nto see authors."),
+    );
+
+    // Tickets (e.g. ABC-123) with a coverage header.
     {
-        let block = pane("Per repo \u{00B7} authors");
-        let inner = block.inner(trio[2]);
-        f.render_widget(block, trio[2]);
-        let max_count = stats.per_repo.iter().map(|(_, c)| *c).max().unwrap_or(1).max(1);
-        let bar_cells = 10usize;
-        let mut lines: Vec<Line> = Vec::new();
-        for (name, count) in stats.per_repo.iter().take(5) {
-            let filled = ((*count as usize * bar_cells) / max_count as usize).max(1);
-            let bar: String = "\u{2588}".repeat(filled) + &"\u{2591}".repeat(bar_cells - filled);
-            let short: String = name.chars().take(14).collect();
-            lines.push(Line::from(vec![
-                Span::styled(format!("{:<14} ", short), Style::default().fg(theme.text)),
-                Span::styled(bar, Style::default().fg(theme.focus_border)),
-                Span::styled(format!(" {count}"), theme.repo_commit_count),
-            ]));
-        }
-        lines.push(Line::from(Span::styled(
-            "\u{2500}".repeat(inner.width.max(1) as usize),
-            Style::default().fg(theme.blurred_border),
-        )));
-        if stats.per_author.is_empty() {
+        let block = pane("Tickets");
+        let inner = block.inner(bottom[2]);
+        f.render_widget(block, bottom[2]);
+        let header = Line::from(vec![
+            Span::styled(format!("{} commits", stats.commits_with_ticket), theme.commit_ticket),
+            Span::styled(" \u{00B7} ", Style::default().fg(theme.blurred_border)),
+            Span::styled(format!("{} tickets", stats.unique_tickets), Style::default().fg(theme.text_secondary)),
+        ]);
+        let mut lines = vec![header];
+        if stats.top_tickets.is_empty() {
             lines.push(Line::from(Span::styled(
-                "Authors: press u (all) or d (detailed)",
+                "No ticket references in subjects.",
                 Style::default().fg(theme.text_secondary),
             )));
         } else {
-            for (name, count) in stats.per_author.iter().take(5) {
-                let short: String = name.chars().take(20).collect();
+            let max = stats.top_tickets.iter().map(|(_, c)| *c).max().unwrap_or(1).max(1);
+            let cells = 8usize;
+            for (ticket, count) in stats.top_tickets.iter().take(5) {
+                let filled = ((*count as usize * cells) / max as usize).max(1);
+                let bar: String = "\u{2588}".repeat(filled) + &"\u{2591}".repeat(cells - filled);
                 lines.push(Line::from(vec![
-                    Span::styled(format!("{:<20} ", short), theme.commit_author),
-                    Span::styled(format!("{count}"), theme.repo_commit_count),
+                    Span::styled(format!("{ticket:<12} "), theme.commit_ticket),
+                    Span::styled(bar, Style::default().fg(theme.text_highlight)),
+                    Span::styled(format!(" {count}"), theme.repo_commit_count),
                 ]));
             }
         }
