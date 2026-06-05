@@ -10,6 +10,7 @@ mod config;
 mod theme;
 mod history;
 mod stats;
+mod onboarding;
 
 use std::{env, time::Duration};
 use std::sync::{Arc, Mutex};
@@ -68,6 +69,11 @@ struct Cli {
     /// Show prompt-construction debug info in the AI summary popup
     #[arg(long)]
     debug: bool,
+
+    /// Re-run the first-run setup wizard (provider, API key, language),
+    /// overwriting the matching values in your config.
+    #[arg(long)]
+    setup: bool,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -102,7 +108,22 @@ enum AppView {
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    // Detect a genuine first run *before* `Settings::new()` creates the file.
+    let first_run = !config::get_user_config_path().exists();
+
     let mut settings = Settings::new().map_err(|e| anyhow::anyhow!("Failed to load settings: {e}"))?;
+
+    // Run the setup wizard on the first ever start, or whenever `--setup` is
+    // passed. Reload settings afterwards so the chosen values take effect.
+    let onboarded = cli.setup || first_run;
+    if onboarded {
+        terminal::disable_raw_mode().ok();
+        if onboarding::run_onboarding(cli.setup)? {
+            settings = Settings::new()
+                .map_err(|e| anyhow::anyhow!("Failed to reload settings after setup: {e}"))?;
+        }
+    }
 
     // Resolve which AI backend to use (CLI flag overrides config; default gemini).
     let provider_str = cli.provider.clone()
@@ -121,6 +142,7 @@ fn main() -> anyhow::Result<()> {
     // active backend; OpenAI-compatible providers use their own key below.
     if provider == LlmProvider::Gemini
         && api_key.is_none()
+        && !onboarded
         && settings.prompt_for_api_key
         && unsafe { prompt_for_api_key()? }
     {

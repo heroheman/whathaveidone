@@ -101,6 +101,30 @@ pub fn save_api_key(api_key: &str) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
+/// Write several keys into the user config in one pass, creating the file if it
+/// does not exist yet and preserving any keys the caller does not touch. Used by
+/// the first-run setup wizard (`onboarding`) to persist the chosen provider,
+/// API key and language together.
+pub fn save_config_values(values: &[(&str, toml::Value)]) -> Result<(), anyhow::Error> {
+    let user_config_path = get_user_config_path();
+
+    if let Some(parent) = user_config_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)?;
+        }
+    }
+
+    let config_str = fs::read_to_string(&user_config_path).unwrap_or_default();
+    let mut doc = config_str.parse::<toml::Table>().unwrap_or_default();
+
+    for (key, value) in values {
+        doc.insert((*key).to_string(), value.clone());
+    }
+
+    fs::write(&user_config_path, doc.to_string())?;
+    Ok(())
+}
+
 pub fn disable_api_key_prompt() -> Result<(), anyhow::Error> {
     let user_config_path = get_user_config_path();
 
