@@ -452,19 +452,14 @@ pub fn handle_key(
                 }
             };
             let prompt = match &loaded_template {
-                Some((_path, Ok(template))) => template
-                    .replace("{from}", &from_date)
-                    .replace("{to}", &to_date)
-                    .replace("{project}", &project_name)
-                    .replace("{projectname}", &project_name)
-                    .replace("{interval}", interval_str)
-                    .replace("{lang}", lang)
-                    .replace("{commits}", &commit_str),
+                Some((_path, Ok(template))) => crate::prompts::build_prompt(
+                    Some(template), &from_date, &to_date, interval_str, &project_name, lang, &commit_str,
+                ),
                 Some((path, Err(e))) => {
                     eprintln!("Error loading custom prompt '{}': {}. Falling back to default prompt.", path, e);
-                    crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str)
+                    crate::prompts::build_prompt(None, &from_date, &to_date, interval_str, &project_name, lang, &commit_str)
                 }
-                None => crate::prompts::prompt_en(&from_date, &to_date, &project_name, lang, &commit_str),
+                None => crate::prompts::build_prompt(None, &from_date, &to_date, interval_str, &project_name, lang, &commit_str),
             };
             let provider_str = match llm.provider {
                 LlmProvider::Gemini => "gemini",
