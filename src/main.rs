@@ -119,7 +119,7 @@ fn main() -> anyhow::Result<()> {
     let onboarded = cli.setup || first_run;
     if onboarded {
         terminal::disable_raw_mode().ok();
-        if onboarding::run_onboarding(cli.setup)? {
+        if onboarding::run_onboarding(cli.setup, &settings)? {
             settings = Settings::new()
                 .map_err(|e| anyhow::anyhow!("Failed to reload settings after setup: {e}"))?;
         }

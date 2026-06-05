@@ -19,6 +19,12 @@ pub struct Settings {
     pub custom_model: Option<String>,
     /// API key for the custom provider (falls back to CUSTOM_API_KEY).
     pub custom_api_key: Option<String>,
+    /// Per-provider key stores. The setup wizard saves the key for each gateway
+    /// separately so switching providers can recall the right one; the active
+    /// provider's key is mirrored into `custom_api_key` for the runtime path.
+    pub openrouter_api_key: Option<String>,
+    pub vercel_api_key: Option<String>,
+    pub openai_api_key: Option<String>,
 }
 
 impl Settings {

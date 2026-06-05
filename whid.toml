@@ -39,4 +39,11 @@ custom_model = "google/gemini-3.1-flash-lite"
 
 # API key for the custom provider.
 # If empty, the CUSTOM_API_KEY environment variable is used instead.
+# The setup wizard mirrors the active provider's key here for the runtime path.
 custom_api_key = ""
+
+# Per-provider key stores filled in by the setup wizard. Keeping a key per
+# provider lets the wizard recall the right one when you switch providers.
+openrouter_api_key = ""
+vercel_api_key = ""
+openai_api_key = ""
