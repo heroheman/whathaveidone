@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://heroheman.github.io/whathaveidone/sitemap.xml

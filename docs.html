@@ -3,9 +3,55 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>whathaveidone — Documentation</title>
-<meta name="description" content="Documentation and usage for whathaveidone: installation, setup, providers, direct mode, configuration, and keyboard shortcuts.">
+<title>Documentation — whathaveidone</title>
+<meta name="description" content="Documentation and usage for whathaveidone: installation, setup wizard, providers and models, direct mode, custom prompts, the stats dashboard, configuration, and keyboard shortcuts.">
+<meta name="author" content="heroheman">
+<meta name="robots" content="index, follow">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f1115">
+<link rel="canonical" href="https://heroheman.github.io/whathaveidone/docs.html">
+
+<!-- Open Graph -->
+<meta property="og:site_name" content="whathaveidone">
+<meta property="og:title" content="whathaveidone — Documentation">
+<meta property="og:description" content="Installation, setup, providers, direct mode, configuration, and keyboard shortcuts for whathaveidone.">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://heroheman.github.io/whathaveidone/docs.html">
+<meta property="og:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png">
+<meta property="og:image:alt" content="whathaveidone Commits view">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="whathaveidone — Documentation">
+<meta name="twitter:description" content="Installation, setup, providers, direct mode, configuration, and keyboard shortcuts for whathaveidone.">
+<meta name="twitter:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png">
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "TechArticle",
+      "@id": "https://heroheman.github.io/whathaveidone/docs.html#article",
+      "headline": "whathaveidone Documentation",
+      "description": "Installation, setup, providers, direct mode, configuration, and keyboard shortcuts for whathaveidone.",
+      "url": "https://heroheman.github.io/whathaveidone/docs.html",
+      "inLanguage": "en",
+      "author": { "@type": "Person", "name": "heroheman", "url": "https://github.com/heroheman" },
+      "about": { "@type": "SoftwareApplication", "name": "whathaveidone", "applicationCategory": "DeveloperApplication" }
+    },
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://heroheman.github.io/whathaveidone/" },
+        { "@type": "ListItem", "position": 2, "name": "Documentation", "item": "https://heroheman.github.io/whathaveidone/docs.html" }
+      ]
+    }
+  ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -129,6 +175,13 @@
   kbd{display:inline-block;background:var(--panel2);border:1px solid var(--border2);
     border-bottom-width:2px;border-radius:5px;padding:1px 7px;font-size:11.5px;color:var(--fg);margin:0 1px}
 
+  /* ---------- a11y ---------- */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .skip-link{position:absolute;left:8px;top:-44px;z-index:1000;background:var(--accent);color:var(--accent-ink);
+    padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;transition:top .15s}
+  .skip-link:focus{top:8px}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
+
   /* ---------- responsive ---------- */
   #backdrop{display:none}
   @media(max-width:880px){
@@ -145,12 +198,13 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 
 <header class="top">
-  <button class="menu-btn" id="menuBtn" aria-label="Toggle menu">☰ Menu</button>
-  <a class="brand" href="index.html"><span class="c">❯</span> whathaveidone</a>
+  <button class="menu-btn" id="menuBtn" aria-label="Toggle navigation menu" aria-controls="sidebar" aria-expanded="false">☰ Menu</button>
+  <a class="brand" href="index.html"><span class="c" aria-hidden="true">❯</span> whathaveidone</a>
   <span class="sp"></span>
-  <nav>
+  <nav aria-label="Site">
     <a href="index.html">Home</a>
     <a href="https://github.com/heroheman/whathaveidone" target="_blank" rel="noopener">GitHub</a>
     <a href="https://crates.io/crates/whathaveidone" target="_blank" rel="noopener">crates.io</a>
@@ -161,6 +215,7 @@
 
 <div class="layout">
   <aside id="sidebar">
+   <nav aria-label="Documentation sections">
     <div class="group">
       <div class="group-t">Getting started</div>
       <a href="#overview">Overview</a>
@@ -187,9 +242,10 @@
       <a href="#cli">CLI flags</a>
       <a href="#config">Configuration</a>
     </div>
+   </nav>
   </aside>
 
-  <main>
+  <main id="content" tabindex="-1">
     <h1>Documentation</h1>
     <p class="intro">A terminal tool that scans your Git repositories, groups recent commits by day &amp; topic, and turns them into a ready-to-read standup summary with AI — Google Gemini out of the box, or any OpenAI-compatible API.</p>
 
@@ -353,7 +409,7 @@ whathaveidone --lang english   <span class="cmt"># default</span></pre></div>
       <h2>Keyboard shortcuts</h2>
       <p>Press <kbd>?</kbd> at any time for an in-app overlay of every key.</p>
       <h3>Global</h3>
-      <div class="tbl"><table><tbody>
+      <div class="tbl"><table><caption class="sr-only">Global keyboard shortcuts</caption><tbody>
         <tr><td><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd></td><td>Switch view (Commits / Overviews / Stats)</td></tr>
         <tr><td><kbd>Tab</kbd> <kbd>⇧Tab</kbd></td><td>Move focus between panes</td></tr>
         <tr><td><kbd>←</kbd> <kbd>→</kbd> / <kbd>h</kbd> <kbd>l</kbd></td><td>Move focus left / right</td></tr>
@@ -362,7 +418,7 @@ whathaveidone --lang english   <span class="cmt"># default</span></pre></div>
         <tr><td><kbd>q</kbd></td><td>Quit</td></tr>
       </tbody></table></div>
       <h3>Commits view</h3>
-      <div class="tbl"><table><tbody>
+      <div class="tbl"><table><caption class="sr-only">Commits view keyboard shortcuts</caption><tbody>
         <tr><td><kbd>Space</kbd></td><td>Open / close the detail pane</td></tr>
         <tr><td><kbd>s</kbd></td><td>Toggle list mode (Timeframe / Selection)</td></tr>
         <tr><td><kbd>m</kbd></td><td>Mark a commit — or a whole repo from the sidebar</td></tr>
@@ -372,7 +428,7 @@ whathaveidone --lang english   <span class="cmt"># default</span></pre></div>
         <tr><td><kbd>a</kbd></td><td>Generate an AI overview</td></tr>
       </tbody></table></div>
       <h3>Overviews view</h3>
-      <div class="tbl"><table><tbody>
+      <div class="tbl"><table><caption class="sr-only">Overviews view keyboard shortcuts</caption><tbody>
         <tr><td><kbd>Enter</kbd> <kbd>c</kbd></td><td>Copy the selected overview to the clipboard</td></tr>
         <tr><td><kbd>r</kbd></td><td>Regenerate the last overview</td></tr>
         <tr><td><kbd>x</kbd> <kbd>Del</kbd></td><td>Delete the selected overview (confirm y/n)</td></tr>
@@ -380,7 +436,7 @@ whathaveidone --lang english   <span class="cmt"># default</span></pre></div>
         <tr><td><kbd>Esc</kbd></td><td>Back to Commits (cancels generation)</td></tr>
       </tbody></table></div>
       <h3>Stats view</h3>
-      <div class="tbl"><table><tbody>
+      <div class="tbl"><table><caption class="sr-only">Stats view keyboard shortcuts</caption><tbody>
         <tr><td><kbd>[</kbd> <kbd>]</kbd></td><td>Previous / next timeframe</td></tr>
         <tr><td><kbd>w</kbd></td><td>Jump to the week timeframe</td></tr>
         <tr><td><kbd>u</kbd></td><td>Toggle mine / all authors</td></tr>
@@ -465,6 +521,7 @@ recent_generations = 20</pre></div>
     btn.className = 'copy';
     btn.type = 'button';
     btn.textContent = 'copy';
+    btn.setAttribute('aria-label', 'Copy code to clipboard');
     btn.addEventListener('click', function(){
       navigator.clipboard.writeText(pre.innerText).then(function(){
         btn.textContent = 'copied'; btn.classList.add('done');
@@ -478,8 +535,13 @@ recent_generations = 20</pre></div>
   var sidebar = document.getElementById('sidebar');
   var backdrop = document.getElementById('backdrop');
   var menuBtn = document.getElementById('menuBtn');
-  function closeMenu(){ sidebar.classList.remove('open'); backdrop.classList.remove('show'); }
-  menuBtn.addEventListener('click', function(){ sidebar.classList.toggle('open'); backdrop.classList.toggle('show'); });
+  function setMenu(open){
+    sidebar.classList.toggle('open', open);
+    backdrop.classList.toggle('show', open);
+    menuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  function closeMenu(){ setMenu(false); }
+  menuBtn.addEventListener('click', function(){ setMenu(!sidebar.classList.contains('open')); });
   backdrop.addEventListener('click', closeMenu);
 
   // scrollspy: highlight the current section in the sidebar
@@ -489,9 +551,9 @@ recent_generations = 20</pre></div>
   var spy = new IntersectionObserver(function(entries){
     entries.forEach(function(e){
       if(e.isIntersecting){
-        links.forEach(function(a){ a.classList.remove('active'); });
+        links.forEach(function(a){ a.classList.remove('active'); a.removeAttribute('aria-current'); });
         var a = map[e.target.id];
-        if(a) a.classList.add('active');
+        if(a){ a.classList.add('active'); a.setAttribute('aria-current', 'true'); }
       }
     });
   }, { rootMargin: '-64px 0px -70% 0px', threshold: 0 });

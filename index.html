@@ -5,14 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>whathaveidone — AI standups from your Git history</title>
 <meta name="description" content="A terminal tool that scans your Git repositories, groups recent commits by day and topic, and turns them into a ready-to-read standup summary with AI. Works with Google Gemini or any OpenAI-compatible API.">
+<meta name="author" content="heroheman">
+<meta name="robots" content="index, follow">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0e0a">
+<link rel="canonical" href="https://heroheman.github.io/whathaveidone/">
 
 <!-- Open Graph -->
+<meta property="og:site_name" content="whathaveidone">
 <meta property="og:title" content="whathaveidone — AI standups from your Git history">
 <meta property="og:description" content="A Rust terminal UI that scans your repos, lists recent commits, and turns them into a standup summary with AI.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://heroheman.github.io/whathaveidone/">
 <meta property="og:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png">
+<meta property="og:image:alt" content="whathaveidone Commits view: repository sidebar and commit list">
+<meta property="og:locale" content="en_US">
+
+<!-- Twitter -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="whathaveidone — AI standups from your Git history">
+<meta name="twitter:description" content="A Rust terminal UI that scans your repos, lists recent commits, and turns them into a standup summary with AI.">
+<meta name="twitter:image" content="https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png">
+<meta name="twitter:image:alt" content="whathaveidone Commits view: repository sidebar and commit list">
+
+<!-- Structured data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      "@id": "https://heroheman.github.io/whathaveidone/#app",
+      "name": "whathaveidone",
+      "alternateName": "whid",
+      "description": "A terminal tool that scans your Git repositories, groups recent commits by day and topic, and turns them into a ready-to-read standup summary with AI. Works with Google Gemini or any OpenAI-compatible API.",
+      "applicationCategory": "DeveloperApplication",
+      "applicationSubCategory": "Command Line Tool",
+      "operatingSystem": "macOS, Linux, Windows",
+      "url": "https://heroheman.github.io/whathaveidone/",
+      "downloadUrl": "https://crates.io/crates/whathaveidone",
+      "codeRepository": "https://github.com/heroheman/whathaveidone",
+      "softwareHelp": "https://heroheman.github.io/whathaveidone/docs.html",
+      "programmingLanguage": "Rust",
+      "license": "https://opensource.org/licenses/MIT",
+      "screenshot": "https://heroheman.github.io/whathaveidone/images/screenshot1-overview.png",
+      "author": { "@type": "Person", "name": "heroheman", "url": "https://github.com/heroheman" },
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    },
+    {
+      "@type": "WebSite",
+      "@id": "https://heroheman.github.io/whathaveidone/#website",
+      "name": "whathaveidone",
+      "url": "https://heroheman.github.io/whathaveidone/",
+      "about": { "@id": "https://heroheman.github.io/whathaveidone/#app" }
+    }
+  ]
+}
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -230,6 +279,13 @@
   .foot a{color:var(--cyan);text-decoration:none;border-bottom:1px dotted var(--cyan)}
   .foot .spacer{flex:1}
 
+  /* a11y helpers */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .skip-link{position:absolute;left:8px;top:-44px;z-index:1000;background:var(--green);color:#06210f;
+    padding:8px 14px;border-radius:8px;font-weight:700;font-size:13px;transition:top .15s}
+  .skip-link:focus{top:8px}
+  a:focus-visible,button:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:6px}
+
   /* fade-in */
   .fade{opacity:0;transform:translateY(14px);animation:rise .7s ease forwards}
   @keyframes rise{to{opacity:1;transform:none}}
@@ -239,16 +295,17 @@
 </style>
 </head>
 <body>
+<a class="skip-link" href="#content">Skip to content</a>
 <div class="wrap">
 
   <!-- HEADER -->
-  <div class="topbar fade d1a">
+  <div class="topbar fade d1a" aria-hidden="true">
     <span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span>
     <!-- <span class="path">~/projects — whathaveidone</span> -->
   </div>
   <header class="hero fade d1a">
-    <div class="prompt-line"><span class="c">$</span> whathaveidone <span id="typed" class="typed"></span><span class="blink">▋</span></div>
-    <h1 class="logo"><span class="caret">❯</span> whathaveidone</h1>
+    <div class="prompt-line" aria-hidden="true"><span class="c">$</span> whathaveidone <span id="typed" class="typed"></span><span class="blink">▋</span></div>
+    <h1 class="logo"><span class="caret" aria-hidden="true">❯</span> whathaveidone</h1>
     <p class="tagline">A terminal tool that scans your <b>Git repositories</b>, groups recent commits by day &amp; topic, and turns them into a ready-to-read <b>standup summary</b> — powered by AI.</p>
     <p class="aliasnote">Run it as <code>whathaveidone</code> — or <code>whid</code>.</p>
 
@@ -260,30 +317,31 @@
     </div>
   </header>
 
+  <main id="content">
   <!-- HOW IT WORKS -->
   <section class="sec fade d2a">
-    <div class="sec-h"><span class="hash">#</span><h2>How it works</h2><span class="rule"></span></div>
+    <div class="sec-h"><span class="hash" aria-hidden="true">#</span><h2>How it works</h2><span class="rule" aria-hidden="true"></span></div>
     <div class="pipe">
       <div class="step">
-        <span class="ico">📚</span><span class="n">01 / SCAN</span>
+        <span class="ico" aria-hidden="true">📚</span><span class="n">01 / SCAN</span>
         <h3>Find repos</h3>
         <p>Scans every Git repo below the current folder and lists their recent commits side by side.</p>
-        <span class="arrow">▸</span>
+        <span class="arrow" aria-hidden="true">▸</span>
       </div>
       <div class="step">
-        <span class="ico">🗂️</span><span class="n">02 / GROUP</span>
+        <span class="ico" aria-hidden="true">🗂️</span><span class="n">02 / GROUP</span>
         <h3>Group commits</h3>
         <p>Sorts commits by day and topic over your chosen timeframe — today, week, month, or a date range.</p>
-        <span class="arrow">▸</span>
+        <span class="arrow" aria-hidden="true">▸</span>
       </div>
       <div class="step">
-        <span class="ico">🧠</span><span class="n">03 / SUMMARIZE</span>
+        <span class="ico" aria-hidden="true">🧠</span><span class="n">03 / SUMMARIZE</span>
         <h3>Ask the AI</h3>
         <p>Sends the selection to Gemini (or any OpenAI-compatible model) and gets back a readable standup.</p>
-        <span class="arrow">▸</span>
+        <span class="arrow" aria-hidden="true">▸</span>
       </div>
       <div class="step">
-        <span class="ico">📋</span><span class="n">04 / SHIP</span>
+        <span class="ico" aria-hidden="true">📋</span><span class="n">04 / SHIP</span>
         <h3>Copy &amp; paste</h3>
         <p>One keypress copies the summary to your clipboard. Paste it straight into your standup.</p>
       </div>
@@ -292,24 +350,24 @@
 
   <!-- FEATURES -->
   <section class="sec fade d3a">
-    <div class="sec-h"><span class="hash">#</span><h2>What it does</h2><span class="rule"></span></div>
+    <div class="sec-h"><span class="hash" aria-hidden="true">#</span><h2>What it does</h2><span class="rule" aria-hidden="true"></span></div>
     <div class="grid">
-      <div class="card"><span class="fi">🧠</span><h4>AI summaries</h4><p>Turns raw commits into a coherent standup, grouped by day and topic.</p></div>
-      <div class="card"><span class="fi">📚</span><h4>Multi-repo</h4><p>Reads many repositories at once, no per-project setup.</p></div>
-      <div class="card"><span class="fi">💾</span><h4>Saved overviews</h4><p>Summaries persist to disk — browse, copy, regenerate or delete past ones.</p></div>
-      <div class="card"><span class="fi">✅</span><h4>Mark &amp; summarize</h4><p>Mark commits with <span class="kbd">m</span> or a whole repo, then summarize only the selection.</p></div>
-      <div class="card"><span class="fi">🎛️</span><h4>Custom prompts</h4><p>Bring your own template with placeholders for project, interval &amp; language.</p></div>
-      <div class="card"><span class="fi">🌍</span><h4>Any language</h4><p>Get the summary in English, German, or anything else via <span class="kbd">--lang</span>.</p></div>
-      <div class="card"><span class="fi">📊</span><h4>Stats dashboard</h4><p>Per day, weekday &amp; hour, busiest day, per-repo / author — plus commit-type &amp; ticket breakdowns.</p></div>
-      <div class="card"><span class="fi">⌨️</span><h4>Consistent keymap</h4><p>Home-row navigation, focus ring, and a built-in <span class="kbd">?</span> help overlay.</p></div>
-      <div class="card"><span class="fi">🚀</span><h4>Direct output</h4><p><span class="kbd">--list</span> and <span class="kbd">--generate</span> print to stdout — pipe into files, the clipboard, or cron jobs.</p></div>
-      <div class="card"><span class="fi">🧙</span><h4>Setup wizard</h4><p>First-run wizard picks provider, model, key &amp; language. Re-run anytime with <span class="kbd">--setup</span>.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">🧠</span><h4>AI summaries</h4><p>Turns raw commits into a coherent standup, grouped by day and topic.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">📚</span><h4>Multi-repo</h4><p>Reads many repositories at once, no per-project setup.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">💾</span><h4>Saved overviews</h4><p>Summaries persist to disk — browse, copy, regenerate or delete past ones.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">✅</span><h4>Mark &amp; summarize</h4><p>Mark commits with <span class="kbd">m</span> or a whole repo, then summarize only the selection.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">🎛️</span><h4>Custom prompts</h4><p>Bring your own template with placeholders for project, interval &amp; language.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">🌍</span><h4>Any language</h4><p>Get the summary in English, German, or anything else via <span class="kbd">--lang</span>.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">📊</span><h4>Stats dashboard</h4><p>Per day, weekday &amp; hour, busiest day, per-repo / author — plus commit-type &amp; ticket breakdowns.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">⌨️</span><h4>Consistent keymap</h4><p>Home-row navigation, focus ring, and a built-in <span class="kbd">?</span> help overlay.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">🚀</span><h4>Direct output</h4><p><span class="kbd">--list</span> and <span class="kbd">--generate</span> print to stdout — pipe into files, the clipboard, or cron jobs.</p></div>
+      <div class="card"><span class="fi" aria-hidden="true">🧙</span><h4>Setup wizard</h4><p>First-run wizard picks provider, model, key &amp; language. Re-run anytime with <span class="kbd">--setup</span>.</p></div>
     </div>
   </section>
 
   <!-- SCREENSHOTS (compact) -->
   <section class="sec fade d3a">
-    <div class="sec-h"><span class="hash">#</span><h2>Screenshots</h2><span class="rule"></span></div>
+    <div class="sec-h"><span class="hash" aria-hidden="true">#</span><h2>Screenshots</h2><span class="rule" aria-hidden="true"></span></div>
     <p class="lead">Three views — commits, saved overviews, and a stats dashboard. Click any shot to enlarge.</p>
     <div class="shots">
       <figure>
@@ -333,7 +391,7 @@
 
   <!-- INSTALL -->
   <section class="sec fade d4a" id="install">
-    <div class="sec-h"><span class="hash">#</span><h2>Up &amp; running in a minute</h2><span class="rule"></span></div>
+    <div class="sec-h"><span class="hash" aria-hidden="true">#</span><h2>Up &amp; running in a minute</h2><span class="rule" aria-hidden="true"></span></div>
     <div class="term">
       <div class="bar"><span class="dot d1"></span><span class="dot d2"></span><span class="dot d3"></span><span class="t">bash — install &amp; first run</span></div>
 <pre><span class="cmt"># 1 · Install from crates.io (needs Rust)</span>
@@ -357,7 +415,7 @@
 
   <!-- DOCS CTA -->
   <section class="sec fade d4a">
-    <div class="sec-h"><span class="hash">#</span><h2>Go deeper</h2><span class="rule"></span></div>
+    <div class="sec-h"><span class="hash" aria-hidden="true">#</span><h2>Go deeper</h2><span class="rule" aria-hidden="true"></span></div>
     <p class="lead">Direct mode, time intervals, providers &amp; models, custom prompts, the full keymap, and every config option — it's all in the documentation.</p>
     <div class="cta">
       <a class="primary" href="docs.html">📖 Read the docs</a>
@@ -367,6 +425,8 @@
       <a class="ghost" href="docs.html#config">Configuration</a>
     </div>
   </section>
+
+  </main>
 
   <!-- FOOTER -->
   <footer class="foot fade d6a">
