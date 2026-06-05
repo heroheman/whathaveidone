@@ -6,10 +6,11 @@
 //
 // The wizard walks through: welcome → provider → model → API key → language.
 // Existing config values are shown greyed-out as defaults; pressing Enter keeps
-// them. Selecting OpenRouter / Vercel / OpenAI fills in the right base URL and
-// offers a curated list of current, sensible models for that provider, with a
-// "type it yourself" escape hatch. It is built from the same Crossterm
-// primitives as the old API-key prompt in `main.rs`, so it adds no new deps.
+// them. Providers that already have a saved key are marked in the picker.
+// Selecting OpenRouter / Vercel / OpenAI fills in the right base URL and offers
+// a curated list of current, sensible models for that provider, with a "type it
+// yourself" escape hatch. Built from the same Crossterm primitives as the old
+// API-key prompt in `main.rs`, so it adds no new deps.
 
 use std::io::{self, Write};
 use std::time::Duration;
@@ -25,6 +26,9 @@ use toml::Value;
 
 use crate::config;
 use crate::config::Settings;
+
+/// Number of numbered steps shown in the header (Provider, Model, Key, Language).
+const TOTAL_STEPS: u8 = 4;
 
 /// A selectable AI backend. Several of these map onto the same config
 /// `provider = "custom"` (any OpenAI-compatible gateway) but differ in their
@@ -44,6 +48,13 @@ struct ProviderDef {
     key_field: &'static str,
     /// Curated (friendly name, model id) pairs offered for this provider.
     models: &'static [(&'static str, &'static str)],
+}
+
+impl ProviderDef {
+    /// Short name for breadcrumbs ("Gemini", "OpenRouter", …).
+    fn short(&self) -> &'static str {
+        self.label.split_whitespace().next().unwrap_or(self.label)
+    }
 }
 
 const OPENROUTER_URL: &str = "https://openrouter.ai/api/v1";
@@ -121,36 +132,80 @@ const PROVIDERS: &[ProviderDef] = &[
     },
 ];
 
-/// Run the wizard. Existing `settings` supply the greyed-out defaults. Returns
-/// whether anything was written (false = aborted before saving).
+/// One wizard screen: a numbered header plus the breadcrumb of choices so far.
+struct Screen<'a> {
+    step: u8,
+    title: &'a str,
+    crumbs: &'a [String],
+}
+
+impl Screen<'_> {
+    /// Clear the screen and draw the banner, breadcrumb and title.
+    fn render(&self) -> anyhow::Result<()> {
+        let mut stdout = io::stdout();
+        execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
+        println!(
+            "{}{}",
+            " whid setup ".black().on_green().bold(),
+            format!("   step {}/{}", self.step, TOTAL_STEPS).dark_grey()
+        );
+        println!();
+        for c in self.crumbs {
+            println!("{} {}", "✓".green(), c.as_str().grey());
+        }
+        if !self.crumbs.is_empty() {
+            println!();
+        }
+        println!("{}", self.title.cyan().bold());
+        println!();
+        stdout.flush()?;
+        Ok(())
+    }
+}
+
+/// Run the wizard. Prints a "skipped" notice (with how to re-run) on abort.
 pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Result<bool> {
+    let saved = run_wizard(is_reconfigure, settings)?;
+    if !saved {
+        skip_notice()?;
+    }
+    Ok(saved)
+}
+
+fn run_wizard(is_reconfigure: bool, settings: &Settings) -> anyhow::Result<bool> {
     if !welcome(is_reconfigure)? {
         return Ok(false);
     }
 
-    // Resolve current selections from settings so each step can default to them.
     let cur_provider = settings.provider.as_deref().unwrap_or("gemini");
     let cur_base_url = settings.custom_base_url.as_deref().unwrap_or("");
     let default_provider = current_provider_index(cur_provider, cur_base_url);
 
     let mut values: Vec<(&'static str, Value)> = Vec::new();
+    let mut crumbs: Vec<String> = Vec::new();
 
-    // --- Provider -----------------------------------------------------------
+    // --- Step 1: Provider ---------------------------------------------------
     let opts: Vec<String> = PROVIDERS.iter().map(|p| p.label.to_string()).collect();
-    let provider_idx = match select(
-        "Which AI backend should generate your standup summaries?",
-        &opts,
-        default_provider,
-    )? {
+    // Mark providers (except the generic Custom) that already have a saved key.
+    let annotations: Vec<String> = PROVIDERS
+        .iter()
+        .map(|p| {
+            if !p.ask_base_url && !stored_key(settings, p.key_field).is_empty() {
+                "✓ key saved".green().to_string()
+            } else {
+                String::new()
+            }
+        })
+        .collect();
+    let screen = Screen { step: 1, title: "Choose your AI provider", crumbs: &crumbs };
+    let provider_idx = match select(&screen, &opts, default_provider, &annotations)? {
         Some(i) => i,
         None => return Ok(false),
     };
     let provider = &PROVIDERS[provider_idx];
     values.push(("provider", Value::String(provider.config_provider.into())));
-
-    // The model + key currently configured *for this provider kind*, used as
-    // defaults only when the user stays on the same provider as before.
     let same_provider = provider_idx == default_provider;
+
     let cur_model = if provider.config_provider == "gemini" {
         settings.gemini_model.clone()
     } else {
@@ -158,20 +213,21 @@ pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Resu
     };
     let cur_model = if same_provider { cur_model } else { String::new() };
 
-    // --- Base URL -----------------------------------------------------------
+    // Base URL (fixed for gateways, asked only for the generic Custom entry).
     if let Some(url) = provider.base_url {
-        // Fixed gateway URL — set silently.
         if provider.config_provider == "custom" {
             values.push(("custom_base_url", Value::String(url.into())));
         }
     } else if provider.ask_base_url {
-        println_intro(&[
-            "Custom provider: any OpenAI-compatible chat-completions endpoint."
-                .to_string(),
-            "Examples:".grey().to_string(),
-            "  https://openrouter.ai/api/v1".cyan().to_string(),
-            "  https://api.openai.com/v1".cyan().to_string(),
-        ])?;
+        let screen = Screen { step: 1, title: "Custom endpoint base URL", crumbs: &crumbs };
+        intro(
+            &screen,
+            &[
+                "Any OpenAI-compatible chat-completions endpoint, e.g.".grey().to_string(),
+                "  https://openrouter.ai/api/v1".cyan().to_string(),
+                "  https://api.openai.com/v1".cyan().to_string(),
+            ],
+        )?;
         let default_url = if same_provider && !cur_base_url.is_empty() {
             cur_base_url
         } else {
@@ -182,67 +238,67 @@ pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Resu
             None => return Ok(false),
         }
     }
+    crumbs.push(format!("Provider · {}", provider.short()));
 
-    // --- Model --------------------------------------------------------------
-    let chosen_model = match pick_model(provider, &cur_model)? {
+    // --- Step 2: Model ------------------------------------------------------
+    let chosen_model = match pick_model(provider, &cur_model, &crumbs)? {
         Some(m) => m,
         None => return Ok(false),
     };
     if provider.config_provider == "gemini" {
-        values.push(("gemini_model", Value::String(chosen_model)));
+        values.push(("gemini_model", Value::String(chosen_model.clone())));
     } else {
-        values.push(("custom_model", Value::String(chosen_model)));
+        values.push(("custom_model", Value::String(chosen_model.clone())));
     }
+    crumbs.push(format!("Model · {chosen_model}"));
 
-    // --- API key ------------------------------------------------------------
-    // Recall the key stored for *this* provider (independent of which provider
-    // was active before), so switching back and forth keeps each key.
+    // --- Step 3: API key ----------------------------------------------------
     let cur_key = stored_key(settings, provider.key_field);
     let has_key = !cur_key.is_empty();
 
-    let mut intro = Vec::new();
-    if provider.config_provider == "gemini" {
-        intro.push("Get a free Gemini API key here:".to_string());
-        intro.push("  https://aistudio.google.com/apikey".cyan().to_string());
-    } else if provider.base_url == Some(OPENROUTER_URL) {
-        intro.push("Create an OpenRouter key here:".to_string());
-        intro.push("  https://openrouter.ai/keys".cyan().to_string());
-    } else if provider.base_url == Some(OPENAI_URL) {
-        intro.push("Create an OpenAI key here:".to_string());
-        intro.push("  https://platform.openai.com/api-keys".cyan().to_string());
-    } else if provider.base_url == Some(VERCEL_URL) {
-        intro.push("Create a Vercel AI Gateway key here:".to_string());
-        intro.push("  https://vercel.com/dashboard/ai-gateway".cyan().to_string());
-    } else {
-        intro.push("Enter the API key for this provider.".to_string());
+    let mut body = Vec::new();
+    match provider.key_field {
+        "gemini_api_key" => {
+            body.push("Get a free Gemini API key:".to_string());
+            body.push("  https://aistudio.google.com/apikey".cyan().to_string());
+        }
+        "openrouter_api_key" => {
+            body.push("Create an OpenRouter key:".to_string());
+            body.push("  https://openrouter.ai/keys".cyan().to_string());
+        }
+        "openai_api_key" => {
+            body.push("Create an OpenAI key:".to_string());
+            body.push("  https://platform.openai.com/api-keys".cyan().to_string());
+        }
+        "vercel_api_key" => {
+            body.push("Create a Vercel AI Gateway key:".to_string());
+            body.push("  https://vercel.com/dashboard/ai-gateway".cyan().to_string());
+        }
+        _ => body.push("Enter the API key for this endpoint.".to_string()),
     }
-    intro.push(String::new());
-    if has_key {
-        intro.push(
-            "Your saved key is shown below — press Enter to keep it, or type to replace."
-                .grey()
-                .to_string(),
-        );
-    } else {
-        intro.push(
-            "Input is hidden. Leave empty to set it later.".grey().to_string(),
-        );
-    }
-    println_intro(&intro)?;
+    body.push(String::new());
+    body.push(
+        if has_key {
+            "Your saved key is shown below — Enter to keep it, or type/paste to replace."
+        } else {
+            "Input is hidden. You can paste. Leave empty to set it later."
+        }
+        .grey()
+        .to_string(),
+    );
+    let screen = Screen { step: 3, title: "API key", crumbs: &crumbs };
+    intro(&screen, &body)?;
 
-    // The stored key is rendered as a greyed placeholder that clears on the
-    // first keystroke; Enter on an untouched field keeps it.
     let new_key = match read_secret("API key", &cur_key)? {
         Some(k) => k,
         None => return Ok(false),
     };
     if provider.config_provider == "gemini" || provider.ask_base_url {
-        // Native Gemini or the generic Custom provider: single key field.
         if !new_key.is_empty() {
             values.push((provider.key_field, Value::String(new_key)));
         }
     } else {
-        // Gateway: persist under its own field and mirror to the active
+        // Gateway: store under its own field and mirror into the active
         // `custom_api_key` the runtime reads (swapped on every provider switch).
         if !new_key.is_empty() {
             values.push((provider.key_field, Value::String(new_key.clone())));
@@ -250,7 +306,7 @@ pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Resu
         values.push(("custom_api_key", Value::String(new_key)));
     }
 
-    // --- Language -----------------------------------------------------------
+    // --- Step 4: Language ---------------------------------------------------
     let cur_lang = settings.lang.clone().unwrap_or_else(|| "english".into());
     let lang_default = match cur_lang.to_lowercase().as_str() {
         "english" | "en" => 0,
@@ -262,13 +318,13 @@ pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Resu
         "German".to_string(),
         "Other (type it yourself)".to_string(),
     ];
-    match select("Default language for the summaries?", &lang_opts, lang_default)? {
+    let screen = Screen { step: 4, title: "Default language for the summaries", crumbs: &crumbs };
+    match select(&screen, &lang_opts, lang_default, &[])? {
         Some(0) => values.push(("lang", Value::String("english".into()))),
         Some(1) => values.push(("lang", Value::String("german".into()))),
         Some(2) => {
-            println_intro(&[
-                "Type your language, e.g. \"french\" or \"español\".".to_string(),
-            ])?;
+            let screen = Screen { step: 4, title: "Language", crumbs: &crumbs };
+            intro(&screen, &["Type a language, e.g. \"french\" or \"español\".".grey().to_string()])?;
             let default_lang = if lang_default == 2 { cur_lang.as_str() } else { "" };
             match read_line_default("Language", default_lang)? {
                 Some(l) if !l.is_empty() => values.push(("lang", Value::String(l))),
@@ -279,7 +335,6 @@ pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Resu
         _ => return Ok(false),
     }
 
-    // --- Persist ------------------------------------------------------------
     config::save_config_values(&values)?;
     confirm(&values)?;
     Ok(true)
@@ -290,12 +345,11 @@ pub fn run_onboarding(is_reconfigure: bool, settings: &Settings) -> anyhow::Resu
 fn pick_model(
     provider: &ProviderDef,
     cur_model: &str,
+    crumbs: &[String],
 ) -> anyhow::Result<Option<String>> {
-    // Generic Custom provider: no curated list, just ask for the id.
     if provider.models.is_empty() {
-        println_intro(&[
-            "Model id for your endpoint, e.g. \"openai/gpt-4o-mini\".".to_string(),
-        ])?;
+        let screen = Screen { step: 2, title: "Model", crumbs };
+        intro(&screen, &["Model id for your endpoint, e.g. \"openai/gpt-4o-mini\".".grey().to_string()])?;
         let default = if cur_model.is_empty() { "" } else { cur_model };
         return read_line_default("Model", default);
     }
@@ -314,9 +368,11 @@ fn pick_model(
         .position(|(_, id)| *id == cur_model)
         .unwrap_or(custom_idx);
 
-    match select("Which model?", &opts, default)? {
+    let screen = Screen { step: 2, title: "Choose a model", crumbs };
+    match select(&screen, &opts, default, &[])? {
         Some(i) if i == custom_idx => {
-            println_intro(&["Enter a model id for this provider.".to_string()])?;
+            let screen = Screen { step: 2, title: "Model", crumbs };
+            intro(&screen, &["Enter a model id for this provider.".grey().to_string()])?;
             let prefill = if default == custom_idx { cur_model } else { "" };
             read_line_default("Model", prefill)
         }
@@ -359,10 +415,12 @@ fn welcome(is_reconfigure: bool) -> anyhow::Result<bool> {
     let mut stdout = io::stdout();
     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
 
+    println!("{}", " whid setup ".black().on_green().bold());
+    println!();
     if is_reconfigure {
-        println!("{}", "whid — re-run setup".green().bold());
+        println!("{}", "Re-running setup. Your current values are preselected.".white());
     } else {
-        println!("{}", "Welcome to whid 👋".green().bold());
+        println!("{}", "Welcome 👋  Let's get you set up.".white());
     }
     println!();
     println!("whid scans the Git repos under your current directory, groups your");
@@ -370,24 +428,26 @@ fn welcome(is_reconfigure: bool) -> anyhow::Result<bool> {
     println!();
     println!(
         "{}",
-        "This quick setup picks a provider, model, API key and language.".grey()
+        "Steps: provider → model → API key → language.".grey()
     );
     println!(
         "{}",
-        format!("Config will be stored at {}", config::get_user_config_path().display())
-            .grey()
+        format!("Config: {}", config::get_user_config_path().display()).dark_grey()
     );
     println!();
     println!(
-        "Press {} to begin, or {} to skip setup.",
-        "Enter".green(),
-        "Esc".red()
+        "Press {} to begin, or {} to skip.",
+        "Enter".green().bold(),
+        "Esc".red().bold()
+    );
+    println!(
+        "{}",
+        "You can re-run this any time with `whid --setup`.".dark_grey()
     );
     stdout.flush()?;
 
     loop {
-        let ev = read_key()?;
-        if let Some(k) = ev {
+        if let Some(k) = read_key()? {
             match k.code {
                 KeyCode::Enter => return Ok(true),
                 KeyCode::Esc | KeyCode::Char('q') => return Ok(false),
@@ -400,25 +460,29 @@ fn welcome(is_reconfigure: bool) -> anyhow::Result<bool> {
     }
 }
 
-/// Arrow-key single-select prompt with a highlighted default (marked "current").
-/// Returns the chosen index, or `None` on abort.
-fn select(title: &str, options: &[String], default: usize) -> anyhow::Result<Option<usize>> {
-    let mut stdout = io::stdout();
+/// Arrow-key single-select with a highlighted default ("current") and optional
+/// per-option annotations (already styled). Returns the index, or `None`.
+fn select(
+    screen: &Screen,
+    options: &[String],
+    default: usize,
+    annotations: &[String],
+) -> anyhow::Result<Option<usize>> {
     let mut sel = default.min(options.len().saturating_sub(1));
     loop {
-        execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-        println!("{}", title.cyan().bold());
-        println!();
+        screen.render()?;
+        let mut stdout = io::stdout();
         for (i, opt) in options.iter().enumerate() {
-            let marker = if i == default { "  (current)".dark_grey().to_string() } else { String::new() };
+            let cur = if i == default { "  (current)".dark_grey().to_string() } else { String::new() };
+            let ann = annotations.get(i).filter(|s| !s.is_empty()).map(|s| format!("  {s}")).unwrap_or_default();
             if i == sel {
-                println!("  {} {}{}", "▶".green(), opt.clone().white().bold(), marker);
+                println!("  {} {}{}{}", "▶".green(), opt.clone().white().bold(), cur, ann);
             } else {
-                println!("    {}{}", opt.clone().grey(), marker);
+                println!("    {}{}{}", opt.clone().grey(), cur, ann);
             }
         }
         println!();
-        println!("{}", "↑/↓ to move · Enter to choose · Esc to skip".grey());
+        println!("{}", "↑/↓ move · Enter select · Esc skip".dark_grey());
         stdout.flush()?;
 
         if let Some(k) = read_key()? {
@@ -440,27 +504,39 @@ fn select(title: &str, options: &[String], default: usize) -> anyhow::Result<Opt
     }
 }
 
+/// Draw a screen header then a body block, leaving the cursor ready for input.
+fn intro(screen: &Screen, body: &[String]) -> anyhow::Result<()> {
+    screen.render()?;
+    let mut stdout = io::stdout();
+    for line in body {
+        println!("{line}");
+    }
+    println!();
+    stdout.flush()?;
+    Ok(())
+}
+
 /// Final recap of what was saved.
 fn confirm(values: &[(&str, Value)]) -> anyhow::Result<()> {
     let mut stdout = io::stdout();
     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-    println!("{}", "✓ Setup complete.".green().bold());
+    println!("{}", " setup complete ".black().on_green().bold());
     println!();
     let get = |k: &str| values.iter().find(|(key, _)| *key == k).and_then(|(_, v)| v.as_str());
     if let Some(p) = get("provider") {
-        println!("  provider : {p}");
+        println!("  {} {p}", "provider".grey());
     }
     if let Some(m) = get("gemini_model").or_else(|| get("custom_model")) {
-        println!("  model    : {m}");
+        println!("  {} {m}", "model   ".grey());
     }
     if let Some(l) = get("lang") {
-        println!("  language : {l}");
+        println!("  {} {l}", "language".grey());
     }
     println!();
     println!("Saved to {}", config::get_user_config_path().display().to_string().cyan());
     println!(
         "{}",
-        "Edit that file any time, or run `whid --setup` to redo this wizard.".grey()
+        "Re-run any time with `whid --setup`.".dark_grey()
     );
     println!();
     println!("{}", "Starting whid …".white());
@@ -469,15 +545,20 @@ fn confirm(values: &[(&str, Value)]) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Print a short intro block (clears the screen first) above an input.
-fn println_intro(lines: &[String]) -> anyhow::Result<()> {
+/// Shown when the wizard is skipped/aborted, so the user knows how to come back.
+fn skip_notice() -> anyhow::Result<()> {
     let mut stdout = io::stdout();
     execute!(stdout, Clear(ClearType::All), cursor::MoveTo(0, 0))?;
-    for line in lines {
-        println!("{line}");
-    }
+    println!("{}", "Setup skipped.".yellow());
+    println!(
+        "{}",
+        "Run `whid --setup` any time to configure your provider, model and keys."
+            .grey()
+    );
     println!();
+    println!("{}", "Starting whid …".white());
     stdout.flush()?;
+    std::thread::sleep(Duration::from_secs(2));
     Ok(())
 }
 
@@ -513,9 +594,8 @@ fn read_secret(prompt: &str, placeholder: &str) -> anyhow::Result<Option<String>
     read_raw(true, placeholder)
 }
 
-/// Core raw-mode line reader with a clearing placeholder. Returns the trimmed
-/// string (or the placeholder if the field was left untouched), or `None` on
-/// abort.
+/// Core raw-mode line reader with a clearing placeholder and paste support.
+/// Returns the trimmed string (or the placeholder if untouched), or `None`.
 fn read_raw(mask: bool, placeholder: &str) -> anyhow::Result<Option<String>> {
     use crossterm::event::{DisableBracketedPaste, EnableBracketedPaste};
 
@@ -548,7 +628,6 @@ fn read_raw(mask: bool, placeholder: &str) -> anyhow::Result<Option<String>> {
         match read()? {
             Event::Key(k) if k.kind != KeyEventKind::Release => match k.code {
                 KeyCode::Enter => {
-                    // Untouched field with a placeholder → keep it.
                     if placeholder_shown && buf.is_empty() {
                         break Some(placeholder.to_string());
                     }

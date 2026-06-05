@@ -1070,7 +1070,7 @@ fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
 /// Centered help overlay listing all keybindings, grouped by scope. Dismissed
 /// by any key (handled in `input`).
 fn render_help_overlay(f: &mut Frame, theme: &Theme, for_overview: bool) {
-    let area = centered_rect(64, 22, f.area());
+    let area = centered_rect(64, 25, f.area());
     f.render_widget(Clear, area);
 
     let head = |s: &str| Line::from(Span::styled(s.to_string(), Style::default().fg(theme.text_highlight).add_modifier(Modifier::BOLD)));
@@ -1106,6 +1106,13 @@ fn render_help_overlay(f: &mut Frame, theme: &Theme, for_overview: bool) {
         lines.push(row("d", "toggle detailed commit lines"));
         lines.push(row("a", "generate an AI overview"));
     }
+
+    lines.push(Line::raw(""));
+    lines.push(head("Setup"));
+    lines.push(Line::from(Span::styled(
+        "  Run `whid --setup` to reconfigure provider, model & API keys.",
+        Style::default().fg(theme.text_secondary),
+    )));
 
     let block = Block::default()
         .borders(Borders::ALL)
