@@ -463,7 +463,7 @@
     if (!el) return;
     var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduce) { el.textContent = 'today'; return; }
-    var words = ['today', 'yesterday', 'week', 'month', '--lang german'];
+    var words = ['today', 'yesterday', 'week', 'month', '--lang german', '--from 2026-01-01 --to 2026-01-31'];
     var wi = 0, ci = 0, deleting = false;
     function tick(){
       var w = words[wi];
