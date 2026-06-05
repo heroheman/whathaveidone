@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.2] - 2026-06-05
+
+### 🚀 Features
+
+- *(setup)* Add first-run setup wizard with --setup flag
+- Add first-run setup wizard with provider/model picker
+- *(ui)* Expand help overlay with setup instructions for reconfiguring provider, model, and API keys
+- *(stats)* Add commit-type and ticket breakdowns to dashboard
+- *(cli)* Add non-interactive direct mode (--list / --generate)
+- *(history)* Persist direct generations, cap via recent_generations
+
+### 🐛 Bug Fixes
+
+- *(onboarding)* Enable raw mode during key input to handle arrow/escape keys correctly
+
+### 📚 Documentation
+
+- Reference screenshots from GitHub Pages instead of repo
+- Update image links in readme to use absolute URLs
+- Document 0.6.2 features (direct mode, setup wizard, stats)
+
+### ⚙️ Miscellaneous Tasks
+
+- Bump version to 0.6.1
+
 ## [0.6.1] - 2026-06-04
 
 ### 📚 Documentation
